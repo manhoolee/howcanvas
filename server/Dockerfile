@@ -1,16 +1,13 @@
-FROM docker.m.daocloud.io/library/node:22-bookworm-slim
+FROM node:22-bookworm-slim
 
 WORKDIR /app
-RUN sed -i \
-        -e 's|http://deb.debian.org/debian|http://mirrors.cloud.tencent.com/debian|g' \
-        -e 's|http://security.debian.org/debian-security|http://mirrors.cloud.tencent.com/debian-security|g' \
-        /etc/apt/sources.list.d/debian.sources \
-    && apt-get update \
+RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY server/requirements-grok.txt ./
+ARG PIP_INDEX_URL=https://pypi.org/simple
 RUN pip3 install --no-cache-dir --break-system-packages \
-    --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
+    --index-url "${PIP_INDEX_URL}" \
     -r requirements-grok.txt
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev
