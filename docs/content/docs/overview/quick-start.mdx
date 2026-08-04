@@ -1,0 +1,48 @@
+---
+title: 快速开始
+description: 用最少步骤把 HowCanvas 跑起来
+---
+
+# 快速开始
+
+如果你只是想先把项目跑起来，优先部署或启动 `web/` 前端。
+
+## Vercel 部署
+
+在 Vercel 中导入仓库即可，根目录 `vercel.json` 会构建 `web/`。当前版本的 AI 请求由浏览器前台直连用户自己的 OpenAI 兼容地址，不需要额外配置服务端。
+
+## 本地启动
+
+```bash
+git clone git@github.com:manhoolee/howcanvas.git
+cd infinite-canvas
+cd web
+bun install
+bun run dev
+```
+
+启动后访问：
+
+```text
+http://localhost:3000
+```
+
+## Docker 启动
+
+如果你需要基于当前源码构建镜像：
+
+```bash
+docker build -t infinite-canvas .
+docker run --rm -p 3000:3000 infinite-canvas
+```
+
+## 首次使用建议
+
+- 先打开右上角配置弹窗，填入自己的 `Base URL`、`API Key` 和模型名。
+- 如果需要提示词仓库内容，打开 `/prompts` 会由浏览器前端直连拉取并缓存到 IndexedDB。
+- 登录后，画布项目和画布引用的图片、视频、音频会按账户保存在服务器，可跨设备、跨浏览器恢复。WebDAV 仍可用于额外同步素材和工作台记录。
+
+## 说明
+
+- 浏览器保留当前账户缓存；登录时先比较服务器版本，缓存版本一致时不下载完整画布。
+- AI API Key 保存在浏览器本地，并由前端直接请求 OpenAI 兼容接口。

@@ -1,0 +1,17 @@
+{
+    "name": "infinite-canvas-server",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "start": "node index.mjs",
+        "dev": "node index.mjs",
+        "test": "node --check index.mjs && node --test security.test.mjs seedream-routing.test.mjs task-queue.test.mjs"
+    },
+    "dependencies": {
+        "busboy": "^1.6.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.5",
+        "express": "^4.21.2"
+    }
+}

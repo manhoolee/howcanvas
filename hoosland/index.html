@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>桌子的世界 Hoosland</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Colors — warm, fresh, organic */
+      --bg: #faf8f5;
+      --surface: #ffffff;
+      --text-primary: #2d2a26;
+      --text-secondary: #6b6560;
+      --text-muted: #948c84;
+      --accent: #6a9c89;
+      --accent-dark: #4f7a6a;
+      --accent-light: #e8f3ef;
+      --border: #e8e4df;
+      --shadow-sm: 0 2px 8px rgba(45, 42, 38, 0.06);
+      --shadow-md: 0 8px 24px rgba(45, 42, 38, 0.10);
+      --shadow-lg: 0 16px 40px rgba(45, 42, 38, 0.12);
+
+      /* Spacing — 4pt base */
+      --space-1: 0.25rem;
+      --space-2: 0.5rem;
+      --space-3: 0.75rem;
+      --space-4: 1rem;
+      --space-6: 1.5rem;
+      --space-8: 2rem;
+      --space-10: 2.5rem;
+      --space-12: 3rem;
+      --space-16: 4rem;
+      --space-20: 5rem;
+
+      /* Typography */
+      --font-display: 'Outfit', 'Noto Sans SC', system-ui, sans-serif;
+      --font-body: 'Noto Sans SC', 'Outfit', system-ui, sans-serif;
+
+      /* Motion */
+      --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+      --transition-fast: 150ms var(--ease-out-quart);
+      --transition-normal: 300ms var(--ease-out-quart);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.7;
+      color: var(--text-primary);
+      background-color: var(--bg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Container */
+    .container {
+      width: 100%;
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 0 var(--space-6);
+    }
+
+    /* Main content */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: var(--space-16) 0 var(--space-12);
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      margin-bottom: var(--space-12);
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-4);
+      background-color: var(--accent-light);
+      color: var(--accent-dark);
+      border-radius: 999px;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      margin-bottom: var(--space-6);
+      opacity: 0;
+      transform: translateY(12px);
+      animation: fadeUp 600ms var(--ease-out-expo) forwards;
+    }
+
+    .hero-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background-color: var(--accent);
+      border-radius: 50%;
+    }
+
+    .hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2.5rem, 6vw, 4rem);
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-3);
+      opacity: 0;
+      transform: translateY(16px);
+      animation: fadeUp 700ms var(--ease-out-expo) 80ms forwards;
+    }
+
+    .hero h1 .en {
+      display: block;
+      font-size: 0.55em;
+      font-weight: 500;
+      color: var(--text-secondary);
+      letter-spacing: 0.04em;
+      margin-top: var(--space-2);
+    }
+
+    .hero p {
+      font-size: 1.0625rem;
+      color: var(--text-secondary);
+      max-width: 42ch;
+      margin: 0 auto;
+      opacity: 0;
+      transform: translateY(16px);
+      animation: fadeUp 700ms var(--ease-out-expo) 160ms forwards;
+    }
+
+    /* Entrance grid — compact row */
+    .entries {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-8);
+    }
+
+    .entry-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-3);
+      text-align: center;
+      padding: var(--space-6) var(--space-4);
+      min-height: 96px;
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow-sm);
+      transition: transform var(--transition-normal), box-shadow var(--transition-normal), border-color var(--transition-fast);
+      opacity: 0;
+      transform: translateY(20px);
+      animation: fadeUp 700ms var(--ease-out-expo) forwards;
+    }
+
+    .entry-card:nth-child(1) { animation-delay: 260ms; }
+    .entry-card:nth-child(2) { animation-delay: 340ms; }
+    .entry-card:nth-child(3) { animation-delay: 420ms; }
+    .entry-card:nth-child(4) { animation-delay: 500ms; }
+
+    .entry-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(106, 156, 137, 0.15), transparent 40%);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity var(--transition-normal);
+    }
+
+    .entry-card:hover,
+    .entry-card:focus-within {
+      transform: translateY(-6px);
+      box-shadow: var(--shadow-lg);
+      border-color: rgba(106, 156, 137, 0.35);
+    }
+
+    .entry-card:hover::before,
+    .entry-card:focus-within::before {
+      opacity: 1;
+    }
+
+    .entry-card.tbc {
+      background-image: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 12px,
+        rgba(232, 228, 223, 0.4) 12px,
+        rgba(232, 228, 223, 0.4) 14px
+      );
+    }
+
+    .entry-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      flex-shrink: 0;
+      transition: transform var(--transition-normal), color var(--transition-fast);
+    }
+
+    .entry-icon svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .entry-card:hover .entry-icon {
+      transform: translateY(-2px);
+    }
+
+    .entry-card.tbc .entry-icon {
+      color: var(--text-muted);
+    }
+
+    .entry-title {
+      font-family: var(--font-display);
+      font-size: 0.9375rem;
+      font-weight: 600;
+      line-height: 1.4;
+      color: var(--text-primary);
+    }
+
+    .entry-title .en {
+      display: block;
+      font-size: 0.68em;
+      font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0.03em;
+      margin-top: 2px;
+    }
+
+    .entry-link {
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      z-index: 1;
+    }
+
+    .entry-link:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      background-color: rgba(255, 255, 255, 0.6);
+      backdrop-filter: blur(8px);
+    }
+
+    .footer-inner {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: var(--space-8);
+      padding: var(--space-10) 0;
+      align-items: start;
+    }
+
+    .footer-text {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .footer-copy {
+      font-size: 0.9375rem;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .footer-disclaimer {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      line-height: 1.7;
+      max-width: 62ch;
+    }
+
+    .footer-meta {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+    }
+
+    .footer-meta a {
+      color: var(--accent-dark);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      text-decoration-thickness: 1px;
+      transition: color var(--transition-fast);
+    }
+
+    .footer-meta a:hover {
+      color: var(--accent);
+    }
+
+    .footer-qr {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-2);
+      text-align: center;
+    }
+
+    .footer-qr img {
+      width: 96px;
+      height: 96px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background-color: var(--surface);
+      padding: var(--space-1);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .footer-qr span {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* Animations */
+    @keyframes fadeUp {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .container {
+        padding: 0 var(--space-4);
+      }
+
+      main {
+        padding: var(--space-12) 0 var(--space-8);
+      }
+
+      .hero {
+        margin-bottom: var(--space-8);
+      }
+
+      .entries {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-3);
+      }
+
+      .entry-card {
+        padding: var(--space-5) var(--space-3);
+        min-height: 88px;
+      }
+
+      .footer-inner {
+        grid-template-columns: 1fr;
+        gap: var(--space-6);
+        padding: var(--space-8) 0;
+      }
+
+      .footer-qr {
+        align-items: flex-start;
+      }
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+
+      html {
+        scroll-behavior: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="container">
+      <section class="hero">
+        <div class="hero-badge">认真吃饭研究所</div>
+        <h1>
+          桌子的世界
+          <span class="en">Hoosland</span>
+        </h1>
+        <p>一个慢慢生长的个人数字空间<br>欢迎你随手推门进来坐坐。</p>
+      </section>
+
+      <nav class="entries" aria-label="网站入口">
+        <article class="entry-card">
+          <div class="entry-icon" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <path d="M4 8.5C4 6.015 6.015 4 8.5 4h15c2.485 0 4.5 2.015 4.5 4.5v15c0 2.485-2.015 4.5-4.5 4.5H8.5C6.015 28 4 25.985 4 23.5V8.5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M16 9l1.1 3.4L20.6 13.5l-3.5 1.1L16 18l-1.1-3.4L11.4 13.5l3.5-1.1L16 9z" fill="currentColor" stroke="none"/>
+              <circle cx="24" cy="9" r="1.4" fill="currentColor" stroke="none"/>
+            </svg>
+          </div>
+          <h2 class="entry-title">
+            HowCanvas
+            <span class="en">HowCanvas</span>
+          </h2>
+          <a class="entry-link" href="http://can.hoosland.com" aria-label="HowCanvas"></a>
+        </article>
+
+        <article class="entry-card">
+          <div class="entry-icon" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <path d="M5 8c0-1.657 1.343-3 3-3h12c1.657 0 3 1.343 3 3v8c0 1.657-1.343 3-3 3h-5l-4 3v-3H8c-1.657 0-3-1.343-3-3V8z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="20" cy="17" r="2.2" fill="currentColor" stroke="none" opacity="0.75"/>
+              <circle cx="24.5" cy="21" r="1.5" fill="currentColor" stroke="none" opacity="0.45"/>
+              <circle cx="17" cy="21.5" r="1.2" fill="currentColor" stroke="none" opacity="0.45"/>
+            </svg>
+          </div>
+          <h2 class="entry-title">
+            浩仔乐园
+            <span class="en">Hoos OWUI</span>
+          </h2>
+          <a class="entry-link" href="http://owui.hoosland.com" aria-label="浩仔乐园 Hoos OWUI"></a>
+        </article>
+
+        <article class="entry-card">
+          <div class="entry-icon" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <path d="M22 3c-3 2-8 8-10 12-1 2-1 4 0 5s3 1 5 0c4-2 10-7 12-10s1-5-1-6-4-2-6 0z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M13 21l-3 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M11 25.5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity="0.5"/>
+              <circle cx="9" cy="28" r="2" fill="currentColor" stroke="none" opacity="0.55"/>
+            </svg>
+          </div>
+          <h2 class="entry-title">
+            胡扯
+            <span class="en">Hoos Chat</span>
+          </h2>
+          <a class="entry-link" href="http://chat.hoosland.com" aria-label="胡扯 Hoos Chat"></a>
+        </article>
+
+        <article class="entry-card">
+          <div class="entry-icon" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <circle cx="10" cy="18" r="2.5" fill="currentColor" stroke="none" opacity="0.35"/>
+              <circle cx="16" cy="14" r="2.5" fill="currentColor" stroke="none" opacity="0.65"/>
+              <circle cx="22" cy="18" r="2.5" fill="currentColor" stroke="none"/>
+            </svg>
+          </div>
+          <h2 class="entry-title">
+            Hoosland Course
+            <span class="en">AI Course</span>
+          </h2>
+          <a class="entry-link" href="http://cou.hoosland.com/" aria-label="Hoosland Course"></a>
+        </article>
+      </nav>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container footer-inner">
+      <div class="footer-text">
+        <p class="footer-copy">Copyright © 2026 认真吃饭研究所 All Rights Reserved.</p>
+        <p class="footer-disclaimer">
+          本网站内容仅供一般性参考，不构成任何专业建议或承诺。具体信息以官方发布或实际合同为准。
+        </p>
+        <div class="footer-meta">
+          <span>联系我们：<a href="mailto:ar2000@vip.163.com">ar2000@vip.163.com</a></span>
+          <span>网站备案信息：</span>
+          <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">粤ICP备2022073418号</a>
+          <a href="https://beian.mps.gov.cn/#/query/webSearch?code=44010602010496" target="_blank" rel="noopener noreferrer">粤公网安备 44010602010496号</a>
+        </div>
+      </div>
+      <div class="footer-qr">
+        <img src="./assets/wechat-qr.jpg" alt="微信公众号二维码">
+        <span>微信公众号</span>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

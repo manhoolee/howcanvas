@@ -1,0 +1,10 @@
+{
+  "name": "infinite-canvas-workspace",
+  "private": true,
+  "scripts": {
+    "test:server": "node --check server/index.mjs && node --test server/security.test.mjs server/seedream-routing.test.mjs",
+    "test:agent": "npm --prefix canvas-agent test",
+    "test:web": "cd web && node node_modules/typescript/bin/tsc --noEmit && node node_modules/vite/bin/vite.js build",
+    "test": "npm run test:server && npm run test:agent && npm run test:web"
+  }
+}
