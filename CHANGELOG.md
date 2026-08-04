@@ -3,6 +3,7 @@
 ## Unreleased
 
 + [调整] 品牌统一为 HowCanvas（浩瀚画布），更换循环错视 Logo，并同步 Hoosland 首页入口、主站、文档、Canvas Agent、Codex 插件和在线域名。
++ [修复] 公共版 Docker Compose 改为从源码构建前端、后端和同源网关，补齐环境示例、持久化卷、健康检查及自动化冒烟测试。
 
 ## v0.12.2 - 2026-08-04
 

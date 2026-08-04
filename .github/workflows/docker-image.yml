@@ -1,4 +1,4 @@
-name: Docker image
+name: Docker web image
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/infinite-canvas
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/howcanvas-web
 
 jobs:
   meta:

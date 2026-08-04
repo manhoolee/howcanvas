@@ -6,7 +6,6 @@
 
 <p align="center">
   <a href="https://linux.do/"><img src="https://img.shields.io/badge/Linux.do-Community-2b6de8?style=flat-square" alt="Linux.do"></a>
-  <a href="https://render.com/deploy?repo=https://github.com/manhoolee/howcanvas"><img src="https://img.shields.io/badge/Render-Deploy-46e3b7?style=flat-square&logo=render&logoColor=111111" alt="Deploy to Render"></a>
   <a href="https://github.com/manhoolee/howcanvas"><img src="https://img.shields.io/github/stars/manhoolee/howcanvas?style=flat-square&logo=github" alt="GitHub stars"></a>
   <a href="https://github.com/manhoolee/howcanvas/tags"><img src="https://img.shields.io/github/v/tag/manhoolee/howcanvas?style=flat-square&label=version" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-f97316?style=flat-square" alt="License"></a>
@@ -15,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="docs/content/docs/overview/quick-start.mdx">快速开始</a> · <a href="docs/content/docs/overview/features.mdx">功能介绍</a> · <a href="docs/content/docs/overview/render.mdx">Render 部署</a> · <a href="docs/content/docs/overview/docker.mdx">Docker 部署</a> · <a href="docs/content/docs/canvas/canvas-node-manual.mdx">画布节点操作手册</a> · <a href="docs/content/docs/canvas/canvas-shortcuts.mdx">画布快捷键</a> · <a href="CLA.md">贡献者协议</a> · <a href="SECURITY.md">漏洞提交</a> · <a href="docs/content/docs/progress/todo.mdx">待办事项</a> · <a href="canvas-agent/README.md">本地 Canvas Agent</a> · <a href="plugins/infinite-canvas">Codex app 插件</a>
+  <a href="docs/content/docs/overview/quick-start.mdx">快速开始</a> · <a href="docs/content/docs/overview/features.mdx">功能介绍</a> · <a href="docs/content/docs/overview/docker.mdx">Docker 部署</a> · <a href="docs/content/docs/canvas/canvas-node-manual.mdx">画布节点操作手册</a> · <a href="docs/content/docs/canvas/canvas-shortcuts.mdx">画布快捷键</a> · <a href="CLA.md">贡献者协议</a> · <a href="SECURITY.md">漏洞提交</a> · <a href="docs/content/docs/progress/todo.mdx">待办事项</a> · <a href="canvas-agent/README.md">本地 Canvas Agent</a> · <a href="plugins/infinite-canvas">Codex app 插件</a>
 </p>
 
 > 本项目 fork 自 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas)，在此基础上进行了大量功能扩展和独立演进。
@@ -61,39 +60,62 @@ HowCanvas（浩瀚画布）是一款面向图片创作的开源工作台。它�
 
 ### 本地开发
 
+需要 Node.js 22+、npm 和 Bun 1.3+。当前版本依赖后端完成登录、数据保存和 AI 请求代理，因此需要同时启动 `server` 与 `web`。
+
 ```bash
-git clone git@github.com:manhoolee/howcanvas.git
+git clone https://github.com/manhoolee/howcanvas.git
 cd howcanvas
+```
+
+复制本地开发配置，并在 `server/.env` 中将示例密码替换为自己的密码：
+
+```bash
+cp server/.env.example server/.env
+```
+
+Windows PowerShell 使用 `Copy-Item server/.env.example server/.env`。
+
+在仓库根目录打开两个终端。终端 1 启动后端：
+
+```bash
+cd server
+npm ci
+npm run dev
+```
+
+终端 2 启动前端：
+
+```bash
 cd web
 bun install
 bun run dev
 ```
 
-### Docker 运行
+访问 `http://localhost:3000`，使用 `server/.env` 中的管理员账号登录；`http://localhost:3000/api/health` 返回 `{"ok":true}` 表示前后端连接正常。Windows PowerShell 如果限制执行 `.ps1`，请使用 `npm.cmd` 和 `bun.cmd`。
+
+首次登录后，在「管理后台 -> 渠道与模型」中添加 AI 渠道并配置模型，普通用户方可使用 AI 功能。
+
+### Docker 部署
+
+需要 Docker Engine 24+ 和 Docker Compose v2。默认 Compose 会从源码构建前端、后端与同源网关。
 
 ```bash
-git clone git@github.com:manhoolee/howcanvas.git
+git clone https://github.com/manhoolee/howcanvas.git
 cd howcanvas
-docker compose up -d
+cp .env.example .env
 ```
 
-运行后默认端口3000，可访问 `http://localhost:3000`。
-
-首次使用需先注册或登录管理员账号，然后在「管理后台 → 渠道与模型」中添加 AI 渠道并配置模型，普通用户方可使用 AI 功能。
-
-### 生产部署
-
-生产环境使用 `docker-compose.deploy.yml`，先复制 `server/.env.example` 为服务器端环境配置，并至少替换 `AUTH_SECRET`、`ADMIN_PASSWORD`；已有 `server-data` 时不会重置现有管理员密码。HTTPS 反向代理就绪后将 `COOKIE_SECURE=true`，同源部署可保持 `CORS_ORIGINS` 为空。
-
-部署后可用 `GET /api/health` 检查后端，响应为 `{"ok":true}` 才表示服务已就绪。画布 JSON、画布媒体、个人资产和账户数据保存在服务器数据卷，浏览器缓存只作为当前账户的加速缓存。
+在 `.env` 中至少替换 `AUTH_SECRET` 和 `ADMIN_PASSWORD`，然后启动：
 
 ```bash
-docker compose -f docker-compose.deploy.yml config
-docker compose -f docker-compose.deploy.yml up -d --build
-docker compose -f docker-compose.deploy.yml ps
+docker compose config
+docker compose up -d --build
+docker compose ps
 ```
 
-生产配置示例见 [`server/.env.example`](server/.env.example)，部署与问题记录见 [`DEBUG_LOG.md`](DEBUG_LOG.md)。
+访问 `http://localhost:3000`，`http://localhost:3000/api/health` 返回 `{"ok":true}` 表示服务就绪。账号、画布和媒体文件保存在 Docker 命名卷 `howcanvas_server-data`；执行 `docker compose down` 不会删除数据，不要在未备份时执行 `docker compose down -v`。
+
+对公网提供服务时，应在端口 3000 前配置 HTTPS 反向代理，并在 `.env` 中设置 `COOKIE_SECURE=true`。Windows PowerShell 使用 `Copy-Item .env.example .env`。
 
 ## 效果展示
 

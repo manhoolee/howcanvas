@@ -5,17 +5,27 @@ description: 用最少步骤把 HowCanvas 跑起来
 
 # 快速开始
 
-如果你只是想先把项目跑起来，优先部署或启动 `web/` 前端。
-
-## Vercel 部署
-
-在 Vercel 中导入仓库即可，根目录 `vercel.json` 会构建 `web/`。当前版本的 AI 请求由浏览器前台直连用户自己的 OpenAI 兼容地址，不需要额外配置服务端。
+当前版本依赖后端完成登录、数据保存和 AI 请求代理。开发时需要同时启动 `server/` 与 `web/`，部署时推荐使用根目录 Docker Compose。
 
 ## 本地启动
 
 ```bash
-git clone git@github.com:manhoolee/howcanvas.git
-cd infinite-canvas
+git clone https://github.com/manhoolee/howcanvas.git
+cd howcanvas
+cp server/.env.example server/.env
+```
+
+编辑 `server/.env` 中的管理员密码。在仓库根目录打开终端 1：
+
+```bash
+cd server
+npm ci
+npm run dev
+```
+
+在仓库根目录打开终端 2：
+
+```bash
 cd web
 bun install
 bun run dev
@@ -29,20 +39,20 @@ http://localhost:3000
 
 ## Docker 启动
 
-如果你需要基于当前源码构建镜像：
+复制生产配置，替换 `AUTH_SECRET` 和 `ADMIN_PASSWORD` 后启动：
 
 ```bash
-docker build -t infinite-canvas .
-docker run --rm -p 3000:3000 infinite-canvas
+cp .env.example .env
+docker compose up -d --build
 ```
 
 ## 首次使用建议
 
-- 先打开右上角配置弹窗，填入自己的 `Base URL`、`API Key` 和模型名。
-- 如果需要提示词仓库内容，打开 `/prompts` 会由浏览器前端直连拉取并缓存到 IndexedDB。
-- 登录后，画布项目和画布引用的图片、视频、音频会按账户保存在服务器，可跨设备、跨浏览器恢复。WebDAV 仍可用于额外同步素材和工作台记录。
+- 使用环境文件中的管理员账号登录。
+- 在「管理后台 -> 渠道与模型」中添加 AI 渠道和模型。
+- 登录后的画布、媒体和账户数据由后端保存，浏览器只保留当前账户缓存。
 
 ## 说明
 
 - 浏览器保留当前账户缓存；登录时先比较服务器版本，缓存版本一致时不下载完整画布。
-- AI API Key 保存在浏览器本地，并由前端直接请求 OpenAI 兼容接口。
+- AI API Key 只保存在服务器，浏览器通过同源 `/api/ai` 代理使用渠道。

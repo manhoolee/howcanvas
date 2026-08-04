@@ -1,13 +1,24 @@
 ---
 title: 本地开发
-description: 前端优先的本地开发方式
+description: 同时启动前端与后端的本地开发方式
 ---
 
 # 本地开发
 
-当前主应用以 `web/` 前端为主，AI 请求由浏览器前台直连用户自己的 OpenAI 兼容接口。
+当前版本依赖 `server/` 完成登录、数据保存和 AI 请求代理，本地开发需要同时启动后端与 `web/` 前端。
 
-## 1. 启动前端
+## 1. 配置并启动后端
+
+```bash
+cp server/.env.example server/.env
+cd server
+npm ci
+npm run dev
+```
+
+首次启动前，在 `server/.env` 中替换管理员密码。后端默认监听 `http://localhost:8787`。
+
+## 2. 启动前端
 
 ```bash
 cd web
@@ -21,11 +32,13 @@ bun run dev
 http://localhost:3000
 ```
 
-## 2. 配置模型
+Vite 会将同源 `/api` 请求代理到本地后端。`http://localhost:3000/api/health` 返回 `{"ok":true}` 表示连接正常。
 
-打开右上角配置弹窗，填写自己的 `Base URL`、`API Key` 和模型名。第三方提示词和 WebDAV 都由浏览器前端直连。
+## 3. 配置模型
 
-## 3. 启动文档站
+使用管理员账号登录，在「管理后台 -> 渠道与模型」中添加 AI 渠道和模型。真实 API Key 只保存在服务器。
+
+## 4. 启动文档站
 
 如果需要单独调整文档站，在 `docs` 目录执行：
 
@@ -36,5 +49,6 @@ bun run dev
 ## 常见场景
 
 - 改画布、页面和交互：主要看 `web/`
+- 改账号、存储和 AI 代理：主要看 `server/`
 - 改提示词缓存：主要看 `web/src/services/api/prompts.ts`
 - 改文档站内容：主要看 `docs/content/docs/`
