@@ -283,6 +283,62 @@
       outline-offset: 3px;
     }
 
+    /* Community links */
+    .community-links {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-10);
+      text-align: center;
+      opacity: 0;
+      transform: translateY(20px);
+      animation: fadeUp 700ms var(--ease-out-expo) 580ms forwards;
+    }
+
+    .github-link {
+      min-width: 160px;
+      color: var(--accent-dark);
+      font-family: var(--font-display);
+      font-size: 1rem;
+      font-weight: 500;
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 4px;
+      transition: color var(--transition-fast);
+    }
+
+    .github-link:hover {
+      color: var(--accent);
+    }
+
+    .github-link:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 4px;
+      border-radius: 4px;
+    }
+
+    .wechat-entry {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .wechat-entry img {
+      width: 96px;
+      height: 96px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background-color: var(--surface);
+      padding: var(--space-1);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .wechat-entry span {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
     /* Footer */
     footer {
       border-top: 1px solid var(--border);
@@ -291,16 +347,14 @@
     }
 
     .footer-inner {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: var(--space-8);
-      padding: var(--space-10) 0;
-      align-items: start;
+      padding: var(--space-10) var(--space-6);
+      text-align: center;
     }
 
     .footer-text {
       display: flex;
       flex-direction: column;
+      align-items: center;
       gap: var(--space-4);
     }
 
@@ -314,12 +368,15 @@
       font-size: 0.8125rem;
       color: var(--text-muted);
       line-height: 1.7;
-      max-width: 62ch;
+      align-self: stretch;
+      max-width: 100%;
+      text-wrap: pretty;
     }
 
     .footer-meta {
       display: flex;
       flex-direction: column;
+      align-items: center;
       gap: var(--space-1);
       font-size: 0.8125rem;
       color: var(--text-secondary);
@@ -335,29 +392,6 @@
 
     .footer-meta a:hover {
       color: var(--accent);
-    }
-
-    .footer-qr {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--space-2);
-      text-align: center;
-    }
-
-    .footer-qr img {
-      width: 96px;
-      height: 96px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background-color: var(--surface);
-      padding: var(--space-1);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .footer-qr span {
-      font-size: 0.75rem;
-      color: var(--text-muted);
     }
 
     /* Animations */
@@ -392,14 +426,13 @@
         min-height: 88px;
       }
 
-      .footer-inner {
-        grid-template-columns: 1fr;
+      .community-links {
+        flex-direction: column;
         gap: var(--space-6);
-        padding: var(--space-8) 0;
       }
 
-      .footer-qr {
-        align-items: flex-start;
+      .footer-inner {
+        padding: var(--space-8) var(--space-4);
       }
     }
 
@@ -494,6 +527,14 @@
           <a class="entry-link" href="http://cou.hoosland.com/" aria-label="Hoosland Course"></a>
         </article>
       </nav>
+
+      <div class="community-links" aria-label="社交链接">
+        <a class="github-link" href="https://github.com/manhoolee" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <div class="wechat-entry">
+          <img src="./assets/wechat-qr.jpg" alt="微信公众号二维码">
+          <span>微信公众号</span>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -501,19 +542,13 @@
     <div class="container footer-inner">
       <div class="footer-text">
         <p class="footer-copy">Copyright © 2026 认真吃饭研究所 All Rights Reserved.</p>
-        <p class="footer-disclaimer">
-          本网站内容仅供一般性参考，不构成任何专业建议或承诺。具体信息以官方发布或实际合同为准。
-        </p>
+        <p class="footer-disclaimer">本网站内容仅供一般性参考，不构成任何专业建议或承诺。具体信息以官方发布或实际合同为准。</p>
         <div class="footer-meta">
           <span>联系我们：<a href="mailto:ar2000@vip.163.com">ar2000@vip.163.com</a></span>
           <span>网站备案信息：</span>
           <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">粤ICP备2022073418号</a>
           <a href="https://beian.mps.gov.cn/#/query/webSearch?code=44010602010496" target="_blank" rel="noopener noreferrer">粤公网安备 44010602010496号</a>
         </div>
-      </div>
-      <div class="footer-qr">
-        <img src="./assets/wechat-qr.jpg" alt="微信公众号二维码">
-        <span>微信公众号</span>
       </div>
     </div>
   </footer>

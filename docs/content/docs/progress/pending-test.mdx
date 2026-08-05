@@ -5,6 +5,7 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+- Hoosland 主页信息布局：桌面端 GitHub 链接与微信公众号二维码应在四个入口下方居中显示，窄屏下应依次纵向排列；页脚版权、免责声明、联系方式和备案信息均应居中，免责声明在宽屏保持一行并随可用宽度自然换行。
 - 公共 Docker 部署：复制根目录 `.env.example` 并替换密钥后，`docker compose up -d --build` 应启动 `app`、`backend`、`gateway` 三个健康服务；前端、`/api/health`、管理员登录均可用，重启后端后管理员与数据仍保留，`docker compose down` 不删除命名卷。
 - HowCanvas 品牌更新：Hoosland 首页入口、README、主站、登录页、画布库、文档站和 Codex 插件应显示 `HowCanvas / 浩瀚画布` 与新版循环 Logo；站点及插件在线入口应指向 `https://can.hoosland.com/`，新建画布和导出文件使用“浩瀚画布”命名。
 - 路由按需加载：首次打开登录页或首页时不应预下载画布、管理后台、图片和视频工作台页面代码；登录后逐页导航均应显示稳定加载状态并正常渲染，刷新任意深层路由不得白屏。
