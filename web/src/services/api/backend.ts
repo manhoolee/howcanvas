@@ -66,6 +66,13 @@ export type ServerMediaIndexEntry = {
     version: number;
 };
 
+export class BackendRequestError extends Error {
+    constructor(message: string, readonly status: number) {
+        super(message);
+        this.name = "BackendRequestError";
+    }
+}
+
 // 服务器上的个人资产记录（文本内容内联，图片/视频为文件）
 export type ServerAssetRecord = {
     id: string;
@@ -136,7 +143,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(path, { ...init, headers, credentials: "same-origin" });
     notifyAuthExpired(res, requestEpoch);
     const data = (await res.json().catch(() => ({}))) as { error?: string } & T;
-    if (!res.ok) throw new Error(data?.error || `请求失败（${res.status}）`);
+    if (!res.ok) throw new BackendRequestError(data?.error || `请求失败（${res.status}）`, res.status);
     return data;
 }
 

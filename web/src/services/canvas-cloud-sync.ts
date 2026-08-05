@@ -1,4 +1,4 @@
-import { backend, type ServerCanvasProject } from "@/services/api/backend";
+import { BackendRequestError, backend, type ServerCanvasProject } from "@/services/api/backend";
 import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { getImageBlob, setImageBlob } from "@/services/image-storage";
 import { getMediaBlob, setMediaBlob } from "@/services/file-storage";
@@ -113,7 +113,17 @@ async function saveCurrentCanvasImpl(ownerId: string, generation: number) {
         retryAttempt = 0;
         clearRetry();
     } catch (error) {
-        // 版本冲突时服务器数据优先，避免多设备互相覆盖。
+        if (!(error instanceof BackendRequestError) || error.status !== 409) {
+            if (shouldRetrySave(error)) {
+                scheduleRetry(ownerId, generation);
+                console.warn("[canvas] 保存暂时失败，已安排自动重试", error);
+            } else {
+                console.error("[canvas] 保存失败", error);
+            }
+            return;
+        }
+
+        // 仅版本冲突时服务器数据优先，避免网络错误触发无意义的远端恢复。
         try {
             if (!isCurrent(ownerId, generation)) return;
             const remote = await backend.canvasProjects();
@@ -127,6 +137,11 @@ async function saveCurrentCanvasImpl(ownerId: string, generation: number) {
             console.error("[canvas] 保存失败，远端恢复也失败", error, remoteError);
         }
     }
+}
+
+function shouldRetrySave(error: unknown) {
+    if (!(error instanceof BackendRequestError)) return true;
+    return error.status === 408 || error.status === 425 || error.status === 429 || error.status >= 500;
 }
 
 function scheduleRetry(ownerId: string, generation: number) {
