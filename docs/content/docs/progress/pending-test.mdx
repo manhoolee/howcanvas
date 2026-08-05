@@ -5,6 +5,7 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+- HTTP 生图结果校验：在 `http://` 部署下分别使用 Image 2 和 Seedream 执行文生图、图生图，生成结果应通过 SHA-256 校验并正常显示，不得再出现 `Cannot read properties of undefined (reading 'digest')`。
 - 画布云同步容错：保存时短暂断网应只提示已安排自动重试，不再请求远端恢复；网络恢复后应自动保存成功；多设备产生 `409` 版本冲突时仍应以服务器画布替换本地冲突版本，其他不可重试 HTTP 错误不得持续请求。
 - Hoosland 主页信息布局：桌面端 GitHub 链接与微信公众号二维码应在四个入口下方居中显示，窄屏下应依次纵向排列；页脚版权、免责声明、联系方式和备案信息均应居中，免责声明在宽屏保持一行并随可用宽度自然换行。
 - 公共 Docker 部署：复制根目录 `.env.example` 并替换密钥后，`docker compose up -d --build` 应启动 `app`、`backend`、`gateway` 三个健康服务；前端、`/api/health`、管理员登录均可用，重启后端后管理员与数据仍保留，`docker compose down` 不删除命名卷。

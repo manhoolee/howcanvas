@@ -210,7 +210,7 @@ async function computeAndStoreFingerprint(ownerId: string, storageKey: string, b
     return operation;
 }
 
-async function hashMediaBlob(blob: Blob) {
+export async function hashMediaBlob(blob: Blob) {
     if (globalThis.crypto?.subtle) {
         const digest = await globalThis.crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
         return bytesToHex(new Uint8Array(digest));

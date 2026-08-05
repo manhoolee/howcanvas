@@ -2,6 +2,7 @@
 
 ## Unreleased
 
++ [修复] HTTP 部署下生成图片校验复用兼容 Web Crypto 缺失的 SHA-256 实现，避免文生图、图生图在结果落盘时因 `crypto.subtle` 不可用而失败。
 + [修复] 画布云同步区分网络中断、版本冲突与 HTTP 错误，网络波动时直接退避重试，避免误触发远端恢复并覆盖本地改动。
 + [优化] Hoosland 主页将 GitHub 与微信公众号入口集中到导航下方，并统一居中展示页脚声明和备案信息。
 + [调整] 品牌统一为 HowCanvas（浩瀚画布），更换循环错视 Logo，并同步 Hoosland 首页入口、主站、文档、Canvas Agent、Codex 插件和在线域名。

@@ -2,7 +2,7 @@ import localforage from "localforage";
 
 import { nanoid } from "nanoid";
 import { dataUrlToBlob, readImageMeta } from "@/lib/image-utils";
-import { recordLocalMediaBlob, removeLocalMediaRecords } from "@/services/media-index";
+import { hashMediaBlob, recordLocalMediaBlob, removeLocalMediaRecords } from "@/services/media-index";
 
 export type UploadedImage = {
     url: string;
@@ -76,7 +76,7 @@ export async function storeGeneratedImage(input: ServerImageInput): Promise<Uplo
     if (typeof input.bytes === "number" && input.bytes !== blob.size) throw new Error("服务器图片大小校验失败");
     if (input.mimeType && blob.type && input.mimeType.toLowerCase() !== blob.type.toLowerCase()) throw new Error("服务器图片类型校验失败");
     if (input.sha256) {
-        const actual = await blobSha256(blob);
+        const actual = await hashMediaBlob(blob);
         if (actual !== input.sha256.toLowerCase()) throw new Error("服务器图片哈希校验失败");
     }
     if (downloaded) await store.setItem(scopedKey, blob);
@@ -114,11 +114,6 @@ export async function setImageBlob(storageKey: string, blob: Blob) {
     if (previous) URL.revokeObjectURL(previous);
     objectUrls.set(scopedKey, url);
     return url;
-}
-
-async function blobSha256(blob: Blob) {
-    const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
-    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function imageToDataUrl(image: { url?: string; dataUrl?: string; storageKey?: string }) {
