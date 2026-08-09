@@ -70,6 +70,12 @@ export function createServerDatabase(file) {
             created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS sync_events_user_sequence_idx ON sync_events(user_id, sequence);
+
+        CREATE TABLE IF NOT EXISTS site_counters (
+            counter_key TEXT PRIMARY KEY,
+            value INTEGER NOT NULL CHECK (value >= 0),
+            updated_at TEXT NOT NULL
+        );
     `);
 
     const statements = {
@@ -135,6 +141,14 @@ export function createServerDatabase(file) {
         deleteMediaAsset: db.prepare("DELETE FROM media_assets WHERE user_id = ? AND scope = ? AND storage_key = ?"),
         deleteMediaAssets: db.prepare("DELETE FROM media_assets WHERE user_id = ?"),
         deleteEvents: db.prepare("DELETE FROM sync_events WHERE user_id = ?"),
+        incrementSiteCounter: db.prepare(`
+            INSERT INTO site_counters (counter_key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(counter_key) DO UPDATE SET
+                value = site_counters.value + 1,
+                updated_at = excluded.updated_at
+            RETURNING value
+        `),
     };
 
     function transaction(callback) {
@@ -255,6 +269,13 @@ export function createServerDatabase(file) {
                 try { payload = JSON.parse(row.payload_json); } catch {}
                 return { sequence: Number(row.sequence), domain: row.domain, entityId: row.entity_id, eventType: row.event_type, payload, createdAt: row.created_at };
             });
+        },
+        incrementSiteCounter(counterKey, startingValue = 0) {
+            const key = String(counterKey || "").trim().slice(0, 100);
+            if (!key) throw new Error("计数器标识不能为空");
+            const baseline = Math.max(0, Math.floor(Number(startingValue) || 0));
+            const row = statements.incrementSiteCounter.get(key, baseline + 1, new Date().toISOString());
+            return Number(row?.value || baseline + 1);
         },
         deleteUserData(userId) {
             transaction(() => {

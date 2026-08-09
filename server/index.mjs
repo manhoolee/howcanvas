@@ -529,6 +529,11 @@ function rateLimit({ max, name }) {
     };
 }
 
+app.post("/api/landing/visits", rateLimit({ max: 30, name: "landing-visit" }), (_req, res) => {
+    const visits = database.incrementSiteCounter("hoosland-home", 1000);
+    res.status(201).json({ visits });
+});
+
 function sessionToken(user, session) {
     return sign({ id: user.id, ver: user.tokenVersion || 0, sid: session.sessionId, sver: session.version, exp: Date.now() + TOKEN_TTL_MS });
 }
