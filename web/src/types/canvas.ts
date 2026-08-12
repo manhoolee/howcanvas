@@ -33,7 +33,7 @@ export type CanvasNodeMetadata = {
     errorDetails?: string;
     serverTaskId?: string;
     videoTaskId?: string;
-    videoTaskProvider?: "openai" | "seedance" | "grok-v2" | "plugin";
+    videoTaskProvider?: "openai" | "seedance" | "grok-v2" | "minimax-h3" | "plugin";
     videoTaskModel?: string;
     taskStatus?: string;
     taskStatusUpdatedAt?: string;

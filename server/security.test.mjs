@@ -147,6 +147,12 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
     const config = await request(baseUrl, "/api/auth/config");
     assert.equal(config.status, 200);
     assert.equal(config.data.registrationEnabled, false);
+    const firstVisit = await request(baseUrl, "/api/landing/visits", { method: "POST" });
+    assert.equal(firstVisit.status, 201);
+    assert.equal(firstVisit.data.visits, 1001);
+    const secondVisit = await request(baseUrl, "/api/landing/visits", { method: "POST" });
+    assert.equal(secondVisit.status, 201);
+    assert.equal(secondVisit.data.visits, 1002);
     const closedRegistration = await request(baseUrl, "/api/auth/register", { body: JSON.stringify({ username: "visitor", password: "very-strong-password" }) });
     assert.equal(closedRegistration.status, 403);
 
@@ -208,6 +214,31 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
     });
     assert.equal(grokChannelResponse.status, 200);
     const grokChannelId = grokChannelResponse.data.channel.id;
+
+    const minimaxChannelResponse = await request(baseUrl, "/api/admin/channels", {
+        cookie: loginAdmin.cookie,
+        body: JSON.stringify({
+            name: "minimax-h3",
+            baseUrl: upstreamBaseUrl,
+            apiKey: "minimax-upstream-secret",
+            apiFormat: "minimax-h3",
+            models: [{ name: "MiniMax-H3", capability: "video" }],
+        }),
+    });
+    assert.equal(minimaxChannelResponse.status, 200);
+    const minimaxChannelId = minimaxChannelResponse.data.channel.id;
+
+    const invalidMiniMaxChannel = await request(baseUrl, "/api/admin/channels", {
+        cookie: loginAdmin.cookie,
+        body: JSON.stringify({
+            name: "invalid-minimax-h3",
+            baseUrl: upstreamBaseUrl,
+            apiKey: "minimax-upstream-secret",
+            apiFormat: "minimax-h3",
+            models: [{ name: "MiniMax-H2", capability: "video" }],
+        }),
+    });
+    assert.equal(invalidMiniMaxChannel.status, 400);
 
     const validDefaultModel = await request(baseUrl, "/api/admin/settings", {
         cookie: loginAdmin.cookie,
@@ -374,6 +405,32 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
         body: grokBody,
     });
     assert.equal(grokLegacyRoute.status, 403);
+
+    const minimaxBody = JSON.stringify({ model: "MiniMax-H3", content: [{ type: "text", text: "a calm sea" }], resolution: "2K", duration: 5, ratio: "16:9" });
+    const minimaxCreated = await request(baseUrl, `/api/ai/${minimaxChannelId}/v2/video_generation`, {
+        cookie: loginAdmin.cookie,
+        headers: { "X-Infinite-Canvas-Model": "MiniMax-H3" },
+        body: minimaxBody,
+    });
+    assert.equal(minimaxCreated.status, 200);
+    assert.equal(upstreamRequests.at(-1).authorization, "Bearer minimax-upstream-secret");
+    assert.equal(upstreamRequests.at(-1).url, "/v2/video_generation");
+    assert.equal(JSON.parse(upstreamRequests.at(-1).body).model, "MiniMax-H3");
+
+    const minimaxPolled = await request(baseUrl, `/api/ai/${minimaxChannelId}/v2/query/video_generation/minimax_task-id`, {
+        cookie: loginAdmin.cookie,
+        method: "GET",
+        headers: { "X-Infinite-Canvas-Model": "MiniMax-H3" },
+    });
+    assert.equal(minimaxPolled.status, 200);
+    assert.equal(upstreamRequests.at(-1).url, "/v2/query/video_generation/minimax_task-id");
+
+    const minimaxLegacyRoute = await request(baseUrl, `/api/ai/${minimaxChannelId}/v1/videos`, {
+        cookie: loginAdmin.cookie,
+        headers: { "X-Infinite-Canvas-Model": "MiniMax-H3" },
+        body: minimaxBody,
+    });
+    assert.equal(minimaxLegacyRoute.status, 403);
 
     const submittedTask = await request(baseUrl, `/api/image-tasks/${channelId}/generations`, {
         cookie: imageCookie,

@@ -354,6 +354,7 @@ function normalizeImageCount(value: string) {
 function apiFormatLabel(apiFormat: ApiCallFormat) {
     if (apiFormat === "gemini") return "Gemini";
     if (apiFormat === "grok-video-v2") return "Grok Video V2";
+    if (apiFormat === "minimax-h3") return "MiniMax H3";
     return "OpenAI";
 }
 

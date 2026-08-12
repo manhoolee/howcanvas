@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
-export type ApiCallFormat = "openai" | "gemini" | "grok-video-v2";
+export type ApiCallFormat = "openai" | "gemini" | "grok-video-v2" | "minimax-h3";
 export type ModelCapability = "image" | "video" | "text" | "audio";
 
 export type ChannelModel = {
@@ -62,6 +62,7 @@ export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
 const CHANNEL_MODEL_SEPARATOR = "::";
 const OPENAI_BASE_URL = "https://api.openai.com";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
+const MINIMAX_BASE_URL = "https://api.minimaxi.com";
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
@@ -387,11 +388,12 @@ function normalizeChannels(config: AiConfig) {
 }
 
 export function defaultBaseUrlForApiFormat(apiFormat: ApiCallFormat) {
+    if (apiFormat === "minimax-h3") return MINIMAX_BASE_URL;
     return apiFormat === "gemini" ? GEMINI_BASE_URL : OPENAI_BASE_URL;
 }
 
 export function normalizeApiFormat(apiFormat: unknown): ApiCallFormat {
-    if (apiFormat === "gemini" || apiFormat === "grok-video-v2") return apiFormat;
+    if (apiFormat === "gemini" || apiFormat === "grok-video-v2" || apiFormat === "minimax-h3") return apiFormat;
     return "openai";
 }
 
