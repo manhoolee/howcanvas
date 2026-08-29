@@ -9,21 +9,13 @@ import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { modelOptionLabel, modelOptionName, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore } from "@/stores/use-config-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
+import { IMAGE_STYLE_DIMENSIONS, IMAGE_STYLE_DIMENSION_GROUPS, IMAGE_STYLE_GENRES, IMAGE_STYLE_PRESETS } from "@/lib/image-style";
+import type { ImageStyleDimensionGroup, ImageStyleSelection } from "@/types/image-style";
 
 // 在网页端执行 Agent 的「站点级」工具（画布列表、工作台生成、提示词搜索、资产增删查等）。
 // 这些工具的数据都在浏览器本地（localforage / zustand），因此由本模块直接读写对应 store 后返回结果。
 
-export const SITE_TOOL_NAMES = [
-    "canvas_list_projects",
-    "generation_get_status",
-    "workbench_image_get_config",
-    "workbench_image_generate",
-    "workbench_video_get_config",
-    "workbench_video_generate",
-    "prompts_search",
-    "assets_list",
-    "assets_add",
-] as const;
+export const SITE_TOOL_NAMES = ["canvas_list_projects", "generation_get_status", "workbench_image_get_config", "workbench_image_generate", "workbench_video_get_config", "workbench_video_generate", "prompts_search", "assets_list", "assets_add"] as const;
 
 export type SiteToolName = (typeof SITE_TOOL_NAMES)[number];
 
@@ -46,7 +38,20 @@ export const SITE_TOOL_LABELS: Record<SiteToolName, string> = {
 type SiteToolInput = Record<string, unknown>;
 type SiteToolContext = { canvasSnapshot?: CanvasAgentSnapshot | null };
 type GenerationStatus = "idle" | "queued" | "running" | "succeeded" | "failed";
-type GenerationStatusItem = { id: string; source: "canvas" | "image" | "video"; status: GenerationStatus; kind?: string; title?: string; prompt?: string; projectId?: string; createdAt?: string; updatedAt?: string; successCount?: number; failCount?: number; error?: string };
+type GenerationStatusItem = {
+    id: string;
+    source: "canvas" | "image" | "video";
+    status: GenerationStatus;
+    kind?: string;
+    title?: string;
+    prompt?: string;
+    projectId?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    successCount?: number;
+    failCount?: number;
+    error?: string;
+};
 
 export async function runSiteTool(name: SiteToolName, input: SiteToolInput, navigate: NavigateFunction, context: SiteToolContext = {}): Promise<unknown> {
     switch (name) {
@@ -88,7 +93,16 @@ function getGenerationStatus(input: SiteToolInput, canvasSnapshot?: CanvasAgentS
             if (!status || (nodeIds.size && !nodeIds.has(node.id))) return;
             const metadata = node.metadata || {};
             if (!nodeIds.size && node.type !== "config" && status !== "running" && status !== "failed" && !metadata.generationMode && !metadata.generationType && !metadata.model) return;
-            tasks.push({ id: node.id, source: "canvas", status, kind: metadata.generationMode || node.type, title: node.title, prompt: compactPrompt(metadata.prompt || metadata.composerContent), projectId: canvasSnapshot.projectId, error: metadata.errorDetails });
+            tasks.push({
+                id: node.id,
+                source: "canvas",
+                status,
+                kind: metadata.generationMode || node.type,
+                title: node.title,
+                prompt: compactPrompt(metadata.prompt || metadata.composerContent),
+                projectId: canvasSnapshot.projectId,
+                error: metadata.errorDetails,
+            });
         });
     }
 
@@ -126,7 +140,9 @@ function compactPrompt(prompt: unknown) {
 function listCanvasProjects(input: SiteToolInput) {
     const { projects, hydrated } = useCanvasStore.getState();
     if (!hydrated) throw new Error("画布还在加载中，请稍后重试");
-    const keyword = String(input.keyword || "").trim().toLowerCase();
+    const keyword = String(input.keyword || "")
+        .trim()
+        .toLowerCase();
     const filtered = keyword ? projects.filter((project) => project.title.toLowerCase().includes(keyword)) : projects;
     const { page, pageSize, start, end } = paginate(input, filtered.length, 20);
     const items = filtered.slice(start, end).map((project) => ({
@@ -149,6 +165,12 @@ function getImageConfig() {
         qualityOptions: imageQualityOptions,
         sizeOptions: imageAspectOptions,
         countRange: { min: 1, max: 15 },
+        stylePresets: IMAGE_STYLE_PRESETS.map(({ id, label, tags }) => ({ id, label, tags })),
+        styleGenres: IMAGE_STYLE_GENRES.map(({ id, label, tags }) => ({ id, label, tags })),
+        styleDimensionGroups: IMAGE_STYLE_DIMENSION_GROUPS.map((group) => ({
+            ...group,
+            options: IMAGE_STYLE_DIMENSIONS[group.id].map(({ id, label, prompt, tags }) => ({ id, label, prompt, tags })),
+        })),
     };
 }
 
@@ -173,11 +195,63 @@ function runImageWorkbench(input: SiteToolInput, navigate: NavigateFunction) {
         configStore.updateConfig("count", count);
         applied.count = count;
     }
+    const imageStyle = readImageStyleInput(input);
+    if (imageStyle) applied.imageStyle = imageStyle;
     const prompt = typeof input.prompt === "string" ? input.prompt : undefined;
     const run = input.run !== false;
     navigate("/image");
-    const taskId = useWorkbenchAgentStore.getState().dispatchImage({ prompt, run });
+    const taskId = useWorkbenchAgentStore.getState().dispatchImage({ prompt, run, ...(imageStyle ? { imageStyle } : {}) });
     return { ok: true, navigated: "/image", prompt, run, taskId, applied, note: run ? "已跳转生图工作台并触发生成，可用 generation_get_status 查询任务" : "已跳转生图工作台并填入参数，未触发生成" };
+}
+
+function readImageStyleInput(input: SiteToolInput): ImageStyleSelection | undefined {
+    const nested = input.imageStyle && typeof input.imageStyle === "object" ? (input.imageStyle as Record<string, unknown>) : {};
+    const pickString = (...values: unknown[]) => values.find((value): value is string => typeof value === "string" && Boolean(value.trim()))?.trim();
+    const presetId = pickString(input.stylePresetId, input.presetId, nested.presetId, nested.preset);
+    const genreId = pickString(input.styleGenreId, input.genreId, nested.genreId, nested.genre);
+    const custom = pickString(input.styleCustom, input.customStyle, nested.custom, nested.customDescription);
+    const rawIntensity = input.styleIntensity ?? input.intensity ?? nested.intensity ?? nested.strength;
+    const intensity = rawIntensity == null ? undefined : Math.max(0, Math.min(1, Number(rawIntensity) > 1 ? Number(rawIntensity) / 100 : Number(rawIntensity)));
+    const preserveSubject = typeof input.preserveSubject === "boolean" ? input.preserveSubject : typeof nested.preserveSubject === "boolean" ? nested.preserveSubject : undefined;
+    const dimensions = readImageStyleDimensions(input, nested);
+    if (!presetId && !genreId && !custom && intensity == null && preserveSubject == null && !Object.keys(dimensions).length) return undefined;
+    const flatDimensions = Object.fromEntries(Object.entries(dimensions).map(([group, values]) => [group, values])) as Partial<ImageStyleSelection>;
+    return {
+        presetId,
+        genreId,
+        custom,
+        intensity: Number.isFinite(intensity) ? intensity : undefined,
+        preserveSubject,
+        ...(Object.keys(dimensions).length ? { dimensions } : {}),
+        ...flatDimensions,
+    };
+}
+
+function readImageStyleDimensions(input: SiteToolInput, nested: Record<string, unknown>) {
+    const dimensionRecords = [input.dimensions, input.styleDimensions, nested.dimensions, nested.styleDimensions].map(asRecord).filter((value): value is Record<string, unknown> => Boolean(value));
+    const dimensions: Partial<Record<ImageStyleDimensionGroup, string[]>> = {};
+    for (const { id } of IMAGE_STYLE_DIMENSION_GROUPS) {
+        const values = [
+            ...dimensionRecords.flatMap((record) => stringList(record[id])),
+            ...stringList(input[id]),
+            ...stringList(nested[id]),
+            ...stringList(input[`style${id.charAt(0).toUpperCase()}${id.slice(1)}`]),
+            ...stringList(nested[`style${id.charAt(0).toUpperCase()}${id.slice(1)}`]),
+        ];
+        const unique = [...new Set(values)];
+        if (unique.length) dimensions[id] = unique;
+    }
+    return dimensions;
+}
+
+function asRecord(value: unknown) {
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+function stringList(value: unknown): string[] {
+    if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+    if (!Array.isArray(value)) return [];
+    return value.flatMap(stringList);
 }
 
 function getVideoConfig() {
@@ -254,7 +328,9 @@ function listAssets(input: SiteToolInput) {
     const { assets, hydrated } = useAssetStore.getState();
     if (!hydrated) throw new Error("资产还在加载中，请稍后重试");
     const kind = input.kind === "text" || input.kind === "image" || input.kind === "video" ? input.kind : "all";
-    const keyword = String(input.keyword || "").trim().toLowerCase();
+    const keyword = String(input.keyword || "")
+        .trim()
+        .toLowerCase();
     const filtered = assets.filter((asset) => {
         if (kind !== "all" && asset.kind !== kind) return false;
         if (!keyword) return true;
@@ -299,7 +375,15 @@ async function addAsset(input: SiteToolInput) {
         } catch {
             throw new Error("无法读取该图片地址，请改用 dataURL 或可跨域访问的图片链接");
         }
-        const id = store.addAsset({ kind: "image", title, coverUrl: stored.url, tags, source, note, data: { dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType } });
+        const id = store.addAsset({
+            kind: "image",
+            title,
+            coverUrl: stored.url,
+            tags,
+            source,
+            note,
+            data: { dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType },
+        });
         return { ok: true, id, kind: "image" };
     }
     throw new Error("assets_add 仅支持 kind=text 或 kind=image");

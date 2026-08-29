@@ -6,12 +6,14 @@ import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, modelMatchesCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
+import { CanvasImageSettingsPopover, CanvasImageStylePopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
 import { CanvasPromptChipInput } from "./canvas-prompt-chip-input";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
-import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData } from "@/types/canvas";
+import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata } from "@/types/canvas";
+import { compileImagePrompt, sourcePromptFromDisplay } from "@/lib/image-style";
+import type { ImageStyleSelection } from "@/types/image-style";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
@@ -20,7 +22,7 @@ type CanvasNodePromptPanelProps = {
     node: CanvasNodeData;
     isRunning: boolean;
     onPromptChange: (nodeId: string, prompt: string) => void;
-    onConfigChange: (nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => void;
+    onConfigChange: (nodeId: string, patch: Partial<CanvasNodeMetadata>) => void;
     onGenerate: (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => void;
     onStop: (nodeId: string) => void;
     mentionReferences?: CanvasResourceReference[];
@@ -36,17 +38,43 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const config = buildNodeConfig(globalConfig, node, mode);
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
-    const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
+    // The editor shows the provider-facing prompt so a selected recipe is
+    // visible even after this panel is unmounted and opened again.  The
+    // generation path still uses sourcePrompt/effectivePrompt metadata to
+    // avoid compiling the same recipe twice.
+    const initialPrompt = node.metadata?.effectivePrompt || node.metadata?.sourcePrompt || node.metadata?.prompt || "";
+    const [prompt, setPrompt] = useState(initialPrompt);
 
     // 仅在切换到其它节点时读取已保存 Prompt，同一节点生成完成后保留当前输入。
     useEffect(() => {
-        setPrompt(node.metadata?.prompt || "");
+        setPrompt(node.metadata?.effectivePrompt || node.metadata?.sourcePrompt || node.metadata?.prompt || "");
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [node.id]);
 
     const updatePrompt = (value: string) => {
         setPrompt(value);
         onPromptChange(node.id, value);
+    };
+
+    const handleImageStyleChange = (imageStyle: ImageStyleSelection) => {
+        // Keep the visible editor in sync with the style controls.  Generated
+        // nodes may currently show an earlier provider-facing prompt, so use
+        // the saved source as the next compilation base instead of appending
+        // another recipe to an already compiled prompt.
+        const savedSource = node.metadata?.sourcePrompt?.trim();
+        const savedEffective = node.metadata?.effectivePrompt?.trim();
+        const currentPrompt = prompt.trim();
+        const sourcePrompt = savedSource && (!savedEffective || currentPrompt === savedEffective) ? savedSource : sourcePromptFromDisplay(currentPrompt, savedSource || "", savedEffective || "");
+        const compiled = compileImagePrompt(sourcePrompt, imageStyle);
+        updatePrompt(compiled.effectivePrompt);
+        // Compare the compiled text rather than enumerating catalog fields;
+        // this also covers independently selected cinematography dimensions
+        // added by the shared style selector.
+        const hasStyle = compiled.effectivePrompt.trim() !== compiled.sourcePrompt.trim();
+        onConfigChange(node.id, {
+            imageStyle,
+            ...(hasStyle ? { sourcePrompt: compiled.sourcePrompt, effectivePrompt: compiled.effectivePrompt, imageStyleSnapshot: compiled.styleSnapshot } : { sourcePrompt: undefined, effectivePrompt: undefined, imageStyleSnapshot: undefined }),
+        });
     };
 
     const submit = () => {
@@ -74,7 +102,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
             />
 
             <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                     <CanvasPromptLibrary onSelect={updatePrompt} />
                     {mode === "image" ? (
                         <>
@@ -82,9 +110,18 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                             <CanvasImageSettingsPopover
                                 config={config}
                                 placement="topLeft"
-                                buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3"
+                                buttonClassName="!h-10 !max-w-[160px] !justify-start !rounded-full !px-2.5"
+                                showStyle={false}
                                 onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
                                 onMissingConfig={() => openConfigDialog(true)}
+                                onOpenChange={onImageSettingsOpenChange}
+                            />
+                            <CanvasImageStylePopover
+                                imageStyle={node.metadata?.imageStyle}
+                                imageStyleSnapshot={node.metadata?.imageStyleSnapshot}
+                                onImageStyleChange={handleImageStyleChange}
+                                placement="topLeft"
+                                buttonClassName="!h-10 !max-w-[120px] !justify-start !rounded-full !px-2.5"
                                 onOpenChange={onImageSettingsOpenChange}
                             />
                         </>
@@ -135,11 +172,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
     const defaultModel = mode === "image" ? globalConfig.imageModel : mode === "video" ? globalConfig.videoModel : mode === "audio" ? globalConfig.audioModel : globalConfig.textModel;
     const fallbackModel = mode === "image" ? defaultConfig.imageModel : mode === "video" ? defaultConfig.videoModel : mode === "audio" ? defaultConfig.audioModel : defaultConfig.textModel;
     const currentModel = node.metadata?.model;
-    const model = currentModel && modelMatchesCapability(globalConfig, currentModel, mode)
-        ? currentModel
-        : defaultModel && modelMatchesCapability(globalConfig, defaultModel, mode)
-            ? defaultModel
-            : fallbackModel;
+    const model = currentModel && modelMatchesCapability(globalConfig, currentModel, mode) ? currentModel : defaultModel && modelMatchesCapability(globalConfig, defaultModel, mode) ? defaultModel : fallbackModel;
     return {
         ...globalConfig,
         model,

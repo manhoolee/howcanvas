@@ -24,11 +24,111 @@ export type CanvasNodeStatus = "idle" | "success" | "loading" | "error";
 export type CanvasGenerationMode = "text" | "image" | "video" | "audio";
 export type CanvasImageGenerationType = "generation" | "edit";
 
+export type ImageStyleDimensionGroup = "composition" | "colorGrading" | "lighting" | "lens" | "cameraMovement" | "texture" | "atmosphere" | "editingRhythm";
+
+export type ImageStyleDimensionOption = {
+    id: string;
+    label: string;
+    prompt: string;
+    group: ImageStyleDimensionGroup;
+    tags?: readonly string[];
+};
+
+export type ImageStyleDimensionSelection = Partial<Record<ImageStyleDimensionGroup, readonly string[]>>;
+export type ImageStyleDimensionValue = readonly string[] | string;
+
+// 与宿主 image-style 契约保持结构一致;导演/灵感名称只用于界面元数据,
+// 宿主会把选择编译成 provider-facing prompt。
+export type ImageStyleSelection = {
+    preset?: string;
+    presetId?: string;
+    genre?: string;
+    genreId?: string;
+    intensity?: number;
+    preserveSubject?: boolean;
+    custom?: string;
+    dimensions?: ImageStyleDimensionSelection;
+    styleDimensions?: ImageStyleDimensionSelection;
+    composition?: ImageStyleDimensionValue;
+    colorGrading?: ImageStyleDimensionValue;
+    lighting?: ImageStyleDimensionValue;
+    lens?: ImageStyleDimensionValue;
+    cameraMovement?: ImageStyleDimensionValue;
+    texture?: ImageStyleDimensionValue;
+    atmosphere?: ImageStyleDimensionValue;
+    editingRhythm?: ImageStyleDimensionValue;
+    styleComposition?: ImageStyleDimensionValue;
+    styleColorGrading?: ImageStyleDimensionValue;
+    styleLighting?: ImageStyleDimensionValue;
+    styleLens?: ImageStyleDimensionValue;
+    styleCameraMovement?: ImageStyleDimensionValue;
+    styleTexture?: ImageStyleDimensionValue;
+    styleAtmosphere?: ImageStyleDimensionValue;
+    styleEditingRhythm?: ImageStyleDimensionValue;
+};
+
+export type ImageStyleSource = {
+    repository: string;
+    commit: string;
+    section: string;
+};
+
+export type ImageStyleSnapshot = {
+    presetId?: string;
+    presetLabel?: string;
+    inspiration?: string;
+    genreId?: string;
+    genreLabel?: string;
+    intensity: number;
+    preserveSubject: boolean;
+    custom?: string;
+    dimensions?: ImageStyleDimensionSelection;
+    version: string;
+    source: ImageStyleSource;
+};
+
 // 节点 metadata 是扁平可选字段袋;插件自定义字段可直接写入(内容惯例放 content)。
 export type CanvasNodeMetadata = {
     content?: string;
     composerContent?: string;
     prompt?: string;
+    sourcePrompt?: string;
+    effectivePrompt?: string;
+    imageStyle?: ImageStyleSelection;
+    imageStyleSnapshot?: ImageStyleSnapshot;
+    dimensions?: ImageStyleDimensionSelection;
+    styleDimensions?: ImageStyleDimensionSelection;
+    stylePresetId?: string;
+    styleGenreId?: string;
+    styleIntensity?: number;
+    styleCustom?: string;
+    preserveSubject?: boolean;
+    stylePreserveSubject?: boolean;
+    preset?: string;
+    presetId?: string;
+    genre?: string;
+    genreId?: string;
+    intensity?: number;
+    strength?: number;
+    custom?: string;
+    customStyle?: string;
+    customDescription?: string;
+    composition?: ImageStyleDimensionValue;
+    colorGrading?: ImageStyleDimensionValue;
+    lighting?: ImageStyleDimensionValue;
+    lens?: ImageStyleDimensionValue;
+    cameraMovement?: ImageStyleDimensionValue;
+    texture?: ImageStyleDimensionValue;
+    atmosphere?: ImageStyleDimensionValue;
+    editingRhythm?: ImageStyleDimensionValue;
+    styleComposition?: ImageStyleDimensionValue;
+    styleColorGrading?: ImageStyleDimensionValue;
+    styleLighting?: ImageStyleDimensionValue;
+    styleLens?: ImageStyleDimensionValue;
+    styleCameraMovement?: ImageStyleDimensionValue;
+    styleTexture?: ImageStyleDimensionValue;
+    styleAtmosphere?: ImageStyleDimensionValue;
+    styleEditingRhythm?: ImageStyleDimensionValue;
     status?: CanvasNodeStatus;
     errorDetails?: string;
     fontSize?: number;
@@ -119,21 +219,85 @@ export type CanvasTheme = {
 // ---------------------------------------------------------------------------
 
 export type CanvasAgentOp =
-    | { type: "add_node"; id?: string; nodeType?: CanvasNodeTypeId; title?: string; position?: { x: number; y: number }; x?: number; y?: number; width?: number; height?: number; metadata?: CanvasNodeMetadata }
-    | { type: "update_node"; id: string; patch?: Partial<CanvasNodeData>; metadata?: CanvasNodeMetadata }
-    | { type: "delete_node"; id?: string; ids?: string[]; nodeType?: CanvasNodeTypeId }
+    | {
+          type: "add_node";
+          id?: string;
+          nodeType?: CanvasNodeTypeId;
+          title?: string;
+          position?: { x: number; y: number };
+          x?: number;
+          y?: number;
+          width?: number;
+          height?: number;
+          metadata?: CanvasNodeMetadata;
+      }
+    | {
+          type: "update_node";
+          id: string;
+          patch?: Partial<CanvasNodeData>;
+          metadata?: CanvasNodeMetadata;
+      }
+    | {
+          type: "delete_node";
+          id?: string;
+          ids?: string[];
+          nodeType?: CanvasNodeTypeId;
+      }
     | { type: "delete_connections"; id?: string; ids?: string[]; all?: boolean }
     | { type: "connect_nodes"; id?: string; fromNodeId: string; toNodeId: string }
     | { type: "set_viewport"; viewport: ViewportTransform }
     | { type: "select_nodes"; ids: string[] }
-    | { type: "run_generation"; nodeId: string; mode?: CanvasGenerationMode; prompt?: string };
+    | {
+          type: "run_generation";
+          nodeId: string;
+          mode?: CanvasGenerationMode;
+          prompt?: string;
+          imageStyle?: ImageStyleSelection;
+          stylePresetId?: string;
+          styleGenreId?: string;
+          styleIntensity?: number;
+          preserveSubject?: boolean;
+          styleCustom?: string;
+          stylePreserveSubject?: boolean;
+          preset?: string;
+          genre?: string;
+          presetId?: string;
+          genreId?: string;
+          intensity?: number;
+          strength?: number;
+          custom?: string;
+          customStyle?: string;
+          customDescription?: string;
+          dimensions?: ImageStyleDimensionSelection;
+          styleDimensions?: ImageStyleDimensionSelection;
+          composition?: ImageStyleDimensionValue;
+          colorGrading?: ImageStyleDimensionValue;
+          lighting?: ImageStyleDimensionValue;
+          lens?: ImageStyleDimensionValue;
+          cameraMovement?: ImageStyleDimensionValue;
+          texture?: ImageStyleDimensionValue;
+          atmosphere?: ImageStyleDimensionValue;
+          editingRhythm?: ImageStyleDimensionValue;
+          styleComposition?: ImageStyleDimensionValue;
+          styleColorGrading?: ImageStyleDimensionValue;
+          styleLighting?: ImageStyleDimensionValue;
+          styleLens?: ImageStyleDimensionValue;
+          styleCameraMovement?: ImageStyleDimensionValue;
+          styleTexture?: ImageStyleDimensionValue;
+          styleAtmosphere?: ImageStyleDimensionValue;
+          styleEditingRhythm?: ImageStyleDimensionValue;
+      };
 
 // ---------------------------------------------------------------------------
 // 资源:插件节点作为上游输入被消费时输出什么(接入生成/引用体系)
 // ---------------------------------------------------------------------------
 
 export type CanvasResourceKind = "image" | "video" | "audio" | "text";
-export type CanvasNodeResource = { kind: CanvasResourceKind; text?: string; url?: string };
+export type CanvasNodeResource = {
+    kind: CanvasResourceKind;
+    text?: string;
+    url?: string;
+};
 
 // ---------------------------------------------------------------------------
 // AI 生成:插件直接复用宿主的模型/密钥配置发起生成(生图/生视频/生文本/生音频)
@@ -153,6 +317,7 @@ export type GenerateOptions = {
 export type GenerateImageOptions = GenerateOptions & {
     count?: number; // 期望生成张数(宿主会按模型上限裁剪)
     size?: string; // 形如 "1024x1024" / "auto";缺省用宿主当前配置
+    imageStyle?: ImageStyleSelection;
 };
 
 export type GenerateImageResult = {
@@ -252,7 +417,10 @@ export type CanvasNodeToolbarItem = {
 };
 
 export type CanvasNodeContentProps = { ctx: CanvasNodeContext };
-export type CanvasNodePanelProps = { ctx: CanvasNodeContext; onClose: () => void };
+export type CanvasNodePanelProps = {
+    ctx: CanvasNodeContext;
+    onClose: () => void;
+};
 
 // 复用宿主内置生成面板(与图片/视频/文本节点同一个组件:模型选择、参数设置、
 // 提示词库、运行/停止状态全部一致)。声明它即可获得完整生成体验,无需自写面板。

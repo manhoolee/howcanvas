@@ -1,3 +1,5 @@
+import type { ImageStyleDimensionSelection, ImageStyleDimensionValue, ImageStyleSelection, ImageStyleSnapshot } from "@/types/image-style";
+
 export type Position = {
     x: number;
     y: number;
@@ -29,6 +31,49 @@ export type CanvasNodeMetadata = {
     content?: string;
     composerContent?: string;
     prompt?: string;
+    /** 原始用户提示词；prompt 保持向后兼容，通常保存最终发送的提示词。 */
+    sourcePrompt?: string;
+    /** 经过电影摄影风格编译后的最终提示词，重试/恢复时优先复用。 */
+    effectivePrompt?: string;
+    /** 节点当前使用的电影摄影风格选择。 */
+    imageStyle?: ImageStyleSelection;
+    /** 生成时解析出的不可变风格快照，保证重试复现同一版本。 */
+    imageStyleSnapshot?: ImageStyleSnapshot;
+    /** 兼容 Agent/plugin 写入的顶层电影摄影维度。 */
+    dimensions?: ImageStyleDimensionSelection;
+    styleDimensions?: ImageStyleDimensionSelection;
+    /** Agent/plugin flat aliases;宿主会归一化到 imageStyle。 */
+    stylePresetId?: string;
+    styleGenreId?: string;
+    styleIntensity?: number;
+    styleCustom?: string;
+    preserveSubject?: boolean;
+    stylePreserveSubject?: boolean;
+    preset?: string;
+    presetId?: string;
+    genre?: string;
+    genreId?: string;
+    intensity?: number;
+    strength?: number;
+    custom?: string;
+    customStyle?: string;
+    customDescription?: string;
+    composition?: ImageStyleDimensionValue;
+    colorGrading?: ImageStyleDimensionValue;
+    lighting?: ImageStyleDimensionValue;
+    lens?: ImageStyleDimensionValue;
+    cameraMovement?: ImageStyleDimensionValue;
+    texture?: ImageStyleDimensionValue;
+    atmosphere?: ImageStyleDimensionValue;
+    editingRhythm?: ImageStyleDimensionValue;
+    styleComposition?: ImageStyleDimensionValue;
+    styleColorGrading?: ImageStyleDimensionValue;
+    styleLighting?: ImageStyleDimensionValue;
+    styleLens?: ImageStyleDimensionValue;
+    styleCameraMovement?: ImageStyleDimensionValue;
+    styleTexture?: ImageStyleDimensionValue;
+    styleAtmosphere?: ImageStyleDimensionValue;
+    styleEditingRhythm?: ImageStyleDimensionValue;
     status?: CanvasNodeStatus;
     errorDetails?: string;
     serverTaskId?: string;

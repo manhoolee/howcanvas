@@ -35,11 +35,88 @@ test("画布写操作只发送给当前激活网页", async (t) => {
     session.updateState(snapshot("canvas-second"), "second");
     session.activateClient("second");
 
-    const result = session.callTool("canvas_create_text_node", { text: "只写入第二个画布" });
+    const result = session.callTool("canvas_create_text_node", {
+        text: "只写入第二个画布",
+    });
     const call = second.event("tool_call");
     assert.equal(first.event("tool_call"), undefined);
     assert.equal(field(call, "name"), "canvas_apply_ops");
-    session.resolveResult("second", { requestId: String(field(call, "requestId")), result: { ok: true } });
+    session.resolveResult("second", {
+        requestId: String(field(call, "requestId")),
+        result: { ok: true },
+    });
+    assert.deepEqual(await result, { ok: true });
+});
+
+test("生成流程把电影摄影风格归一化写入配置节点", async (t) => {
+    const session = new CanvasSession();
+    const client = connect(session, "style-flow");
+    t.after(() => client.close());
+    session.updateState(snapshot("canvas-style"), "style-flow");
+    session.activateClient("style-flow");
+
+    const result = session.callTool("canvas_create_generation_flow", {
+        prompt: "雨夜街头的人像",
+        mode: "image",
+        stylePresetId: "neon-urban-energy",
+        styleGenreId: "film-noir",
+        styleIntensity: 70,
+        preserveSubject: false,
+        styleCustom: "wet pavement reflections",
+    });
+    const call = client.event("tool_call");
+    const input = field(call, "input") as { ops: Array<Record<string, unknown>> };
+    const configNode = input.ops.find((op) => op.type === "add_node" && op.nodeType === "config");
+    assert.deepEqual((configNode?.metadata as Record<string, unknown>)?.imageStyle, {
+        presetId: "neon-urban-energy",
+        genreId: "film-noir",
+        intensity: 0.7,
+        preserveSubject: false,
+        custom: "wet pavement reflections",
+    });
+
+    session.resolveResult("style-flow", {
+        requestId: String(field(call, "requestId")),
+        result: { ok: true },
+    });
+    assert.deepEqual(await result, { ok: true });
+});
+
+test("生成流程保留嵌套与扁平电影摄影维度", async (t) => {
+    const session = new CanvasSession();
+    const client = connect(session, "dimension-flow");
+    t.after(() => client.close());
+    session.updateState(snapshot("canvas-dimensions"), "dimension-flow");
+    session.activateClient("dimension-flow");
+
+    const result = session.callTool("canvas_create_generation_flow", {
+        prompt: "雨夜街头的人像",
+        mode: "image",
+        imageStyle: {
+            dimensions: {
+                composition: ["deep-focus-staging"],
+                cameraMovement: ["long-tracking"],
+            },
+        },
+        styleDimensions: { texture: "35mm-grain" },
+        styleColorGrading: "cold-blue-orange-fog",
+    });
+    const call = client.event("tool_call");
+    const input = field(call, "input") as { ops: Array<Record<string, unknown>> };
+    const configNode = input.ops.find((op) => op.type === "add_node" && op.nodeType === "config");
+    assert.deepEqual((configNode?.metadata as Record<string, unknown>)?.imageStyle, {
+        dimensions: {
+            composition: ["deep-focus-staging"],
+            colorGrading: ["cold-blue-orange-fog"],
+            cameraMovement: ["long-tracking"],
+            texture: ["35mm-grain"],
+        },
+    });
+
+    session.resolveResult("dimension-flow", {
+        requestId: String(field(call, "requestId")),
+        result: { ok: true },
+    });
     assert.deepEqual(await result, { ok: true });
 });
 
@@ -48,10 +125,24 @@ test("当前 turn 的图片附件可在发起标签页画布创建图片节点",
     const first = connect(session, "first");
     t.after(() => first.close());
     const dataUrl = "data:image/png;base64,aW1hZ2U=";
-    session.setTurnAttachments("first", [{ id: "attachment-1", name: "商品.png", type: "image/png", size: 5, width: 1200, height: 600, dataUrl }]);
+    session.setTurnAttachments("first", [
+        {
+            id: "attachment-1",
+            name: "商品.png",
+            type: "image/png",
+            size: 5,
+            width: 1200,
+            height: 600,
+            dataUrl,
+        },
+    ]);
     session.bindClient("first");
 
-    const result = session.callTool("canvas_create_attachment_nodes", { attachmentIds: ["attachment-1"], x: 100, y: 200 });
+    const result = session.callTool("canvas_create_attachment_nodes", {
+        attachmentIds: ["attachment-1"],
+        x: 100,
+        y: 200,
+    });
     const call = first.event("tool_call");
     const input = field(call, "input") as Record<string, unknown>;
     const nodes = input.nodes as Array<Record<string, unknown>>;
@@ -65,8 +156,13 @@ test("当前 turn 的图片附件可在发起标签页画布创建图片节点",
     assert.equal("dataUrl" in nodes[0], false);
     assert.equal(session.getTurnAttachment("first", "attachment-1").dataUrl, dataUrl);
 
-    session.resolveResult("first", { requestId: String(field(call, "requestId")), result: { ok: true } });
-    const created = (await result) as { nodes: Array<{ id: string; attachmentId: string; title: string }> };
+    session.resolveResult("first", {
+        requestId: String(field(call, "requestId")),
+        result: { ok: true },
+    });
+    const created = (await result) as {
+        nodes: Array<{ id: string; attachmentId: string; title: string }>;
+    };
     assert.equal(created.nodes[0].id, nodes[0].id);
     assert.equal(created.nodes[0].attachmentId, "attachment-1");
     session.clearTurnAttachments("first");
@@ -81,10 +177,22 @@ test("图片附件只允许发起 turn 的标签页读取和落入画布", async
         first.close();
         second.close();
     });
-    session.setTurnAttachments("first", [{ id: "attachment-1", name: "商品.png", type: "image/png", dataUrl: "data:image/png;base64,aW1hZ2U=" }]);
+    session.setTurnAttachments("first", [
+        {
+            id: "attachment-1",
+            name: "商品.png",
+            type: "image/png",
+            dataUrl: "data:image/png;base64,aW1hZ2U=",
+        },
+    ]);
     session.bindClient("second");
 
-    await assert.rejects(session.callTool("canvas_create_attachment_nodes", { attachmentIds: ["attachment-1"] }), /发起标签页/);
+    await assert.rejects(
+        session.callTool("canvas_create_attachment_nodes", {
+            attachmentIds: ["attachment-1"],
+        }),
+        /发起标签页/,
+    );
     assert.throws(() => session.getTurnAttachment("second", "attachment-1"), /发起标签页/);
     assert.equal(first.event("tool_call"), undefined);
     assert.equal(second.event("tool_call"), undefined);
@@ -100,11 +208,19 @@ test("tool result is accepted only from the request client", async (t) => {
     });
     session.activateClient("first");
 
-    const result = session.callTool("canvas_create_text_node", { text: "first only" });
+    const result = session.callTool("canvas_create_text_node", {
+        text: "first only",
+    });
     const call = first.event("tool_call");
     const requestId = String(field(call, "requestId"));
 
-    assert.equal(session.resolveResult("second", { requestId, result: { client: "second" } }), false);
+    assert.equal(
+        session.resolveResult("second", {
+            requestId,
+            result: { client: "second" },
+        }),
+        false,
+    );
     assert.equal(session.resolveResult("first", { requestId, result: { client: "first" } }), true);
     assert.deepEqual(await result, { client: "first" });
 });
@@ -123,8 +239,14 @@ test("生成状态查询由当前激活网页返回", async (t) => {
     const call = second.event("tool_call");
     assert.equal(first.event("tool_call"), undefined);
     assert.equal(field(call, "name"), "generation_get_status");
-    session.resolveResult("second", { requestId: String(field(call, "requestId")), result: { total: 1, tasks: [{ id: "image-1", status: "running" }] } });
-    assert.deepEqual(await result, { total: 1, tasks: [{ id: "image-1", status: "running" }] });
+    session.resolveResult("second", {
+        requestId: String(field(call, "requestId")),
+        result: { total: 1, tasks: [{ id: "image-1", status: "running" }] },
+    });
+    assert.deepEqual(await result, {
+        total: 1,
+        tasks: [{ id: "image-1", status: "running" }],
+    });
 });
 
 test("活动网页关闭后回退到仍连接的画布", async (t) => {
@@ -166,13 +288,18 @@ test("closing the active client falls back to the most recently focused client",
 test("closing a client rejects its pending tool requests", async () => {
     const session = new CanvasSession();
     const first = connect(session, "first");
-    const result = session.callTool("canvas_create_text_node", { text: "pending" });
+    const result = session.callTool("canvas_create_text_node", {
+        text: "pending",
+    });
     const call = first.event("tool_call");
     const requestId = String(field(call, "requestId"));
     first.close();
 
     const outcome = await Promise.race([
-        result.then(() => "resolved", (error) => error instanceof Error ? error.message : String(error)),
+        result.then(
+            () => "resolved",
+            (error) => (error instanceof Error ? error.message : String(error)),
+        ),
         new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 20)),
     ]);
     if (outcome === "pending") session.resolveResult("first", { requestId, result: null });
@@ -188,10 +315,18 @@ test("shared thread events are broadcast with the active thread id", (t) => {
         second.close();
     });
 
-    session.emitThread("workspace_changed", "thread-2", { activeThreadId: "thread-2" });
+    session.emitThread("workspace_changed", "thread-2", {
+        activeThreadId: "thread-2",
+    });
 
-    assert.deepEqual(first.event("workspace_changed"), { activeThreadId: "thread-2", threadId: "thread-2" });
-    assert.deepEqual(second.event("workspace_changed"), { activeThreadId: "thread-2", threadId: "thread-2" });
+    assert.deepEqual(first.event("workspace_changed"), {
+        activeThreadId: "thread-2",
+        threadId: "thread-2",
+    });
+    assert.deepEqual(second.event("workspace_changed"), {
+        activeThreadId: "thread-2",
+        threadId: "thread-2",
+    });
 });
 
 test("new clients receive the current Codex state and later updates", (t) => {
@@ -200,10 +335,18 @@ test("new clients receive the current Codex state and later updates", (t) => {
     const client = connect(session, "first");
     t.after(() => client.close());
 
-    assert.deepEqual(field(client.event("hello"), "codex"), { busy: true, threadId: "thread-2", turnId: "turn-1" });
+    assert.deepEqual(field(client.event("hello"), "codex"), {
+        busy: true,
+        threadId: "thread-2",
+        turnId: "turn-1",
+    });
 
     session.setCodexState({ busy: false });
-    assert.deepEqual(client.event("codex_state"), { busy: false, threadId: "thread-2", turnId: "turn-1" });
+    assert.deepEqual(client.event("codex_state"), {
+        busy: false,
+        threadId: "thread-2",
+        turnId: "turn-1",
+    });
 });
 
 test("a bound client remains the tool target while focus changes", async (t) => {
@@ -223,7 +366,10 @@ test("a bound client remains the tool target while focus changes", async (t) => 
     const result = session.callTool("canvas_create_text_node", { text: "bound" });
     const call = first.event("tool_call");
     assert.equal(second.event("tool_call"), undefined);
-    session.resolveResult("first", { requestId: String(field(call, "requestId")), result: { ok: true } });
+    session.resolveResult("first", {
+        requestId: String(field(call, "requestId")),
+        result: { ok: true },
+    });
     assert.deepEqual(await result, { ok: true });
 
     session.releaseClient("first");
@@ -245,9 +391,14 @@ test("closing the bound client falls back to the active client", async (t) => {
     first.close();
 
     assert.equal(field(await session.callTool("canvas_get_state", {}), "projectId"), "canvas-second");
-    const result = session.callTool("canvas_create_text_node", { text: "fallback" });
+    const result = session.callTool("canvas_create_text_node", {
+        text: "fallback",
+    });
     const call = second.event("tool_call");
-    session.resolveResult("second", { requestId: String(field(call, "requestId")), result: { ok: true } });
+    session.resolveResult("second", {
+        requestId: String(field(call, "requestId")),
+        result: { ok: true },
+    });
     assert.deepEqual(await result, { ok: true });
 });
 
@@ -258,7 +409,14 @@ function connect(session: CanvasSession, clientId: string) {
 }
 
 function snapshot(projectId: string) {
-    return { projectId, title: projectId, nodes: [], connections: [], selectedNodeIds: [], viewport: { x: 0, y: 0, k: 1 } };
+    return {
+        projectId,
+        title: projectId,
+        nodes: [],
+        connections: [],
+        selectedNodeIds: [],
+        viewport: { x: 0, y: 0, k: 1 },
+    };
 }
 
 function field(value: unknown, key: string) {
@@ -279,7 +437,10 @@ class FakeSseResponse extends EventEmitter {
 
     event(type: string) {
         const chunk = this.chunks.find((item) => item.startsWith(`event: ${type}\n`));
-        const data = chunk?.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
+        const data = chunk
+            ?.split("\n")
+            .find((line) => line.startsWith("data: "))
+            ?.slice(6);
         return data ? (JSON.parse(data) as unknown) : undefined;
     }
 

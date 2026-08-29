@@ -14,6 +14,7 @@ import { uploadMediaFile } from "@/services/file-storage";
 import { nanoid } from "nanoid";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
+import { compileImagePrompt, DEFAULT_IMAGE_STYLE_SELECTION, sourcePromptFromDisplay } from "@/lib/image-style";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
@@ -41,6 +42,7 @@ import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { mergeCanvasNodeMetadata } from "@/lib/canvas/canvas-agent-ops";
 import { useAgentBridge } from "@/pages/canvas/hooks/use-agent-bridge";
 import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
 import { buildNodeMentionReferences, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
@@ -87,6 +89,7 @@ import {
 } from "@/types/canvas";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio } from "@/types/media";
+import type { ImageStyleDimensionGroup, ImageStyleDimensionSelection, ImageStyleSelection, ImageStyleSnapshot } from "@/types/image-style";
 
 // 内置节点注册到统一注册表(模块加载时执行一次)
 registerBuiltinNodes();
@@ -139,6 +142,140 @@ const IMAGE_PROMPT_REVERSE_PRESET = `请根据参考图片反推一段适合用�
 1. 只输出提示词正文，不要解释。
 2. 覆盖主体、构图、风格、光线、色彩、材质、镜头和氛围。
 3. 尽量写成可直接用于生图模型的完整提示词。`;
+
+function imageStyleSelectionFromSnapshot(snapshot?: ImageStyleSnapshot): ImageStyleSelection | undefined {
+    if (!snapshot) return undefined;
+    return {
+        ...(snapshot.presetId ? { presetId: snapshot.presetId } : {}),
+        ...(snapshot.genreId ? { genreId: snapshot.genreId } : {}),
+        intensity: snapshot.intensity,
+        preserveSubject: snapshot.preserveSubject,
+        ...(snapshot.custom ? { custom: snapshot.custom } : {}),
+        ...(snapshot.dimensions ? { dimensions: snapshot.dimensions } : {}),
+    };
+}
+
+const IMAGE_STYLE_DIMENSION_GROUPS: readonly ImageStyleDimensionGroup[] = ["composition", "colorGrading", "lighting", "lens", "cameraMovement", "texture", "atmosphere", "editingRhythm"];
+
+function imageStyleDimensionsFromRecord(record: Record<string, unknown> | undefined): ImageStyleDimensionSelection | undefined {
+    if (!record) return undefined;
+    const nested = [record.dimensions, record.styleDimensions].filter((value) => value && typeof value === "object" && !Array.isArray(value)) as Record<string, unknown>[];
+    const result: Partial<Record<ImageStyleDimensionGroup, string[]>> = {};
+    for (const group of IMAGE_STYLE_DIMENSION_GROUPS) {
+        const prefix = `style${group.charAt(0).toUpperCase()}${group.slice(1)}`;
+        const values = [...nested.map((item) => item[group]), ...nested.map((item) => item[prefix]), ...(nested.length ? [] : [record[group], record[prefix]])].flatMap((value) => {
+            if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+            if (!Array.isArray(value)) return [];
+            return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim());
+        });
+        const unique = [...new Set(values)];
+        if (unique.length) result[group] = unique;
+    }
+    return Object.keys(result).length ? result : undefined;
+}
+
+function imageStyleSelectionForNode(node?: CanvasNodeData): ImageStyleSelection {
+    const metadata = node?.metadata as
+        | (CanvasNodeMetadata & {
+              stylePresetId?: string;
+              styleGenreId?: string;
+              styleIntensity?: number;
+              preserveSubject?: boolean;
+              styleCustom?: string;
+              dimensions?: ImageStyleDimensionSelection;
+              styleDimensions?: ImageStyleDimensionSelection;
+              [key: string]: unknown;
+          })
+        | undefined;
+    const metadataDimensions = imageStyleDimensionsFromRecord(metadata);
+    const flatSelection =
+        metadata && (metadata.stylePresetId || metadata.styleGenreId || metadata.styleCustom || metadata.styleIntensity != null || metadata.preserveSubject != null)
+            ? {
+                  ...(metadata.stylePresetId ? { presetId: metadata.stylePresetId } : {}),
+                  ...(metadata.styleGenreId ? { genreId: metadata.styleGenreId } : {}),
+                  ...(metadata.styleIntensity != null ? { intensity: metadata.styleIntensity > 1 ? metadata.styleIntensity / 100 : metadata.styleIntensity } : {}),
+                  ...(metadata.preserveSubject != null ? { preserveSubject: metadata.preserveSubject } : {}),
+                  ...(metadata.styleCustom ? { custom: metadata.styleCustom } : {}),
+                  ...(metadataDimensions ? { dimensions: metadataDimensions } : {}),
+              }
+            : undefined;
+    if (node?.metadata?.imageStyle) {
+        const style = node.metadata.imageStyle;
+        const styleRecord = style as Record<string, unknown>;
+        const styleDimensions = imageStyleDimensionsFromRecord(styleRecord);
+        const hasExplicitStyleContainer = ["dimensions", "styleDimensions"].some((key) => Object.prototype.hasOwnProperty.call(styleRecord, key));
+        // A canonical nested dimensions object is authoritative (including an
+        // explicitly empty object used to clear a previous selection).  Older
+        // flat metadata is only used as a fallback when the style object has
+        // no nested container at all.
+        if (hasExplicitStyleContainer) return { ...style, dimensions: styleDimensions || {} };
+        const dimensions = mergeImageStyleDimensions(styleDimensions, metadataDimensions);
+        return dimensions ? { ...style, dimensions } : style;
+    }
+    return flatSelection || (metadataDimensions ? { dimensions: metadataDimensions } : undefined) || imageStyleSelectionFromSnapshot(node?.metadata?.imageStyleSnapshot) || DEFAULT_IMAGE_STYLE_SELECTION;
+}
+
+function mergeImageStyleDimensions(...selections: Array<ImageStyleDimensionSelection | undefined>) {
+    const merged: Partial<Record<ImageStyleDimensionGroup, string[]>> = {};
+    for (const selection of selections) {
+        if (!selection) continue;
+        for (const group of IMAGE_STYLE_DIMENSION_GROUPS) {
+            const values = selection[group];
+            if (!values) continue;
+            const current = merged[group] || [];
+            merged[group] = [...new Set([...current, ...(Array.isArray(values) ? values : [values])])];
+        }
+    }
+    return Object.keys(merged).length ? (merged as ImageStyleDimensionSelection) : undefined;
+}
+
+function compileCanvasImagePrompt(rawPrompt: string, metadata?: CanvasNodeMetadata, fallback?: ImageStyleSelection, reuseSaved = true) {
+    const sourcePrompt = String(rawPrompt || "").trim();
+    const savedSource = metadata?.sourcePrompt?.trim();
+    const canReuseSaved = reuseSaved && Boolean(metadata?.effectivePrompt) && (!savedSource || savedSource === sourcePrompt || metadata?.effectivePrompt?.trim() === sourcePrompt);
+    if (canReuseSaved && metadata?.effectivePrompt) {
+        return {
+            sourcePrompt: metadata.sourcePrompt || sourcePrompt,
+            effectivePrompt: metadata.effectivePrompt,
+            styleSnapshot: metadata.imageStyleSnapshot || compileImagePrompt(sourcePrompt, metadata.imageStyle || fallback).styleSnapshot,
+        };
+    }
+    // When the caller explicitly marks the source as dirty, the fallback is
+    // the current node/config selection and must win over a stale child or
+    // batch-root snapshot.  For clean retries, keep the persisted selection
+    // first so the exact recipe version is reproducible.
+    const selection = reuseSaved
+        ? metadata?.imageStyle || imageStyleSelectionFromSnapshot(metadata?.imageStyleSnapshot) || fallback || DEFAULT_IMAGE_STYLE_SELECTION
+        : fallback || metadata?.imageStyle || imageStyleSelectionFromSnapshot(metadata?.imageStyleSnapshot) || DEFAULT_IMAGE_STYLE_SELECTION;
+    return compileImagePrompt(sourcePrompt, selection);
+}
+
+function sourcePromptForImageGeneration(node: CanvasNodeData | undefined, prompt: string) {
+    const candidate = prompt.trim();
+    // Config nodes use composerContent tokens to resolve upstream inputs;
+    // replacing those tokens with a previously expanded snapshot would lose
+    // references. Only image nodes need the stale-display fallback here.
+    if (node?.type !== CanvasNodeType.Image) return candidate;
+    const sourcePrompt = node?.metadata?.sourcePrompt?.trim();
+    const effectivePrompt = node?.metadata?.effectivePrompt?.trim();
+    if (sourcePrompt && (!effectivePrompt || candidate === effectivePrompt)) return sourcePrompt;
+    return sourcePromptFromDisplay(candidate, sourcePrompt || "", effectivePrompt || "");
+}
+
+function imageStyleClientContext(snapshot?: ImageStyleSnapshot) {
+    if (!snapshot) return {};
+    const dimensions = snapshot.dimensions && typeof snapshot.dimensions === "object" ? snapshot.dimensions : undefined;
+    const entries = dimensions ? Object.entries(dimensions).filter(([, values]) => Array.isArray(values) && values.length) : [];
+    const flatDimensions = Object.fromEntries(entries.map(([group, values]) => [`style${group.charAt(0).toUpperCase()}${group.slice(1)}`, (values as string[]).join(",")])) as Record<string, string>;
+    return {
+        ...(snapshot.presetId ? { stylePresetId: snapshot.presetId } : {}),
+        ...(snapshot.genreId ? { styleGenreId: snapshot.genreId } : {}),
+        styleIntensity: snapshot.intensity,
+        stylePreserveSubject: snapshot.preserveSubject,
+        styleVersion: snapshot.version,
+        ...(entries.length ? { styleDimensions: JSON.stringify(Object.fromEntries(entries)), ...flatDimensions } : {}),
+    } satisfies Record<string, string | number | boolean>;
+}
 
 export default function CanvasPage() {
     const [mounted, setMounted] = useState(false);
@@ -297,30 +434,56 @@ function InfiniteCanvasPage() {
         if (request?.controller === controller) generationRequestsRef.current.delete(targetNodeId);
     }, []);
 
-    const imageTaskOptions = useCallback((targetNodeId: string, controller: AbortController, existingTaskId?: string) => ({
-        signal: controller.signal,
-        existingTaskId,
-        clientContext: { surface: "canvas", projectId, nodeId: targetNodeId },
-        onTaskSubmitted: (serverTaskId: string) => {
-            setNodes((prev) => prev.map((node) => (node.id === targetNodeId ? { ...node, metadata: { ...node.metadata, serverTaskId, status: NODE_STATUS_LOADING, taskStatus: "queued", taskStatusUpdatedAt: new Date().toISOString(), errorDetails: undefined } } : node)));
-        },
-        onTaskUpdated: (task: ServerImageTask) => {
-            setNodes((prev) => prev.map((node) => (node.id === targetNodeId ? { ...node, metadata: { ...node.metadata, serverTaskId: task.id, status: NODE_STATUS_LOADING, taskStatus: task.phase, taskStatusUpdatedAt: task.updatedAt, errorDetails: undefined } } : node)));
-        },
-    }), [projectId]);
+    const imageTaskOptions = useCallback(
+        (targetNodeId: string, controller: AbortController, existingTaskId?: string, styleSnapshot?: ImageStyleSnapshot) => ({
+            signal: controller.signal,
+            existingTaskId,
+            clientContext: { surface: "canvas", projectId, nodeId: targetNodeId, ...imageStyleClientContext(styleSnapshot) },
+            onTaskSubmitted: (serverTaskId: string) => {
+                setNodes((prev) =>
+                    prev.map((node) =>
+                        node.id === targetNodeId ? { ...node, metadata: { ...node.metadata, serverTaskId, status: NODE_STATUS_LOADING, taskStatus: "queued", taskStatusUpdatedAt: new Date().toISOString(), errorDetails: undefined } } : node,
+                    ),
+                );
+            },
+            onTaskUpdated: (task: ServerImageTask) => {
+                setNodes((prev) =>
+                    prev.map((node) =>
+                        node.id === targetNodeId ? { ...node, metadata: { ...node.metadata, serverTaskId: task.id, status: NODE_STATUS_LOADING, taskStatus: task.phase, taskStatusUpdatedAt: task.updatedAt, errorDetails: undefined } } : node,
+                    ),
+                );
+            },
+        }),
+        [projectId],
+    );
 
-    const videoTaskOptions = useCallback((targetNodeId: string, controller: AbortController) => ({
-        signal: controller.signal,
-        onTaskSubmitted: (task: VideoGenerationTask) => {
-            setNodes((prev) =>
-                prev.map((node) =>
-                    node.id === targetNodeId
-                        ? { ...node, metadata: { ...node.metadata, videoTaskId: task.id, videoTaskProvider: task.provider, videoTaskModel: task.model, status: NODE_STATUS_LOADING, taskStatus: "submitted", taskStatusUpdatedAt: new Date().toISOString(), errorDetails: undefined } }
-                        : node,
-                ),
-            );
-        },
-    }), []);
+    const videoTaskOptions = useCallback(
+        (targetNodeId: string, controller: AbortController) => ({
+            signal: controller.signal,
+            onTaskSubmitted: (task: VideoGenerationTask) => {
+                setNodes((prev) =>
+                    prev.map((node) =>
+                        node.id === targetNodeId
+                            ? {
+                                  ...node,
+                                  metadata: {
+                                      ...node.metadata,
+                                      videoTaskId: task.id,
+                                      videoTaskProvider: task.provider,
+                                      videoTaskModel: task.model,
+                                      status: NODE_STATUS_LOADING,
+                                      taskStatus: "submitted",
+                                      taskStatusUpdatedAt: new Date().toISOString(),
+                                      errorDetails: undefined,
+                                  },
+                              }
+                            : node,
+                    ),
+                );
+            },
+        }),
+        [],
+    );
 
     const askVideoTaskId = useCallback(
         () =>
@@ -331,7 +494,13 @@ function InfiniteCanvasPage() {
                     content: (
                         <div className="space-y-2 pt-2">
                             <div className="text-xs text-neutral-400">粘贴渠道结果页中的任务 ID。这里只查询已有任务，不会重新生成或扣费。</div>
-                            <Input autoFocus placeholder="例如：cgt-xxxxxxxx" onChange={(event) => { value = event.target.value; }} />
+                            <Input
+                                autoFocus
+                                placeholder="例如：cgt-xxxxxxxx"
+                                onChange={(event) => {
+                                    value = event.target.value;
+                                }}
+                            />
                         </div>
                     ),
                     okText: "查询结果",
@@ -431,9 +600,7 @@ function InfiniteCanvasPage() {
                     if (state.status === "pending") {
                         setNodes((prev) =>
                             prev.map((item) =>
-                                item.id === nodeId
-                                    ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, taskStatus: state.task.phase, taskStatusUpdatedAt: state.task.updatedAt || checkedAt, errorDetails: undefined } }
-                                    : item,
+                                item.id === nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, taskStatus: state.task.phase, taskStatusUpdatedAt: state.task.updatedAt || checkedAt, errorDetails: undefined } } : item,
                             ),
                         );
                         message.info(state.task.phase === "queued" ? "任务正在排队" : state.task.phase === "retrieving" ? "服务器正在取回图片" : "任务仍在生成");
@@ -442,9 +609,7 @@ function InfiniteCanvasPage() {
                     if (state.status === "failed") {
                         setNodes((prev) =>
                             prev.map((item) =>
-                                item.id === nodeId
-                                    ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, taskStatus: state.task.status, taskStatusUpdatedAt: state.task.updatedAt || checkedAt, errorDetails: state.error } }
-                                    : item,
+                                item.id === nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, taskStatus: state.task.status, taskStatusUpdatedAt: state.task.updatedAt || checkedAt, errorDetails: state.error } } : item,
                             ),
                         );
                         message.error(state.error);
@@ -491,20 +656,12 @@ function InfiniteCanvasPage() {
                     }
                     const state = await pollVideoGenerationTask(generationConfig, task);
                     if (state.status === "pending") {
-                        setNodes((prev) =>
-                            prev.map((item) =>
-                                item.id === nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, taskStatus: "running", taskStatusUpdatedAt: checkedAt, errorDetails: undefined } } : item,
-                            ),
-                        );
+                        setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, taskStatus: "running", taskStatusUpdatedAt: checkedAt, errorDetails: undefined } } : item)));
                         message.info("任务仍在生成");
                         return;
                     }
                     if (state.status === "failed") {
-                        setNodes((prev) =>
-                            prev.map((item) =>
-                                item.id === nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, taskStatus: "failed", taskStatusUpdatedAt: checkedAt, errorDetails: state.error } } : item,
-                            ),
-                        );
+                        setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, taskStatus: "failed", taskStatusUpdatedAt: checkedAt, errorDetails: state.error } } : item)));
                         message.error(state.error);
                         return;
                     }
@@ -626,29 +783,42 @@ function InfiniteCanvasPage() {
                     const generationConfig = buildGenerationConfig(effectiveConfig, pendingNode, "image");
                     const references = metadata.generationType === "edit" ? await resolveMetadataReferences(metadata) : [];
                     if (references === null) throw new Error("参考图片已丢失，无法恢复后台任务结果");
-                    const options = imageTaskOptions(pendingNode.id, controller, taskId);
+                    const options = imageTaskOptions(pendingNode.id, controller, taskId, metadata.imageStyleSnapshot);
+                    const recoveredPrompt = compileCanvasImagePrompt(metadata.sourcePrompt || metadata.prompt || "", metadata, imageStyleSelectionForNode(pendingNode)).effectivePrompt;
                     const image = references.length
-                        ? await requestEdit({ ...generationConfig, count: "1" }, metadata.prompt || "", references, undefined, options).then((items) => items[0])
-                        : await requestGeneration({ ...generationConfig, count: "1" }, metadata.prompt || "", options).then((items) => items[0]);
+                        ? await requestEdit({ ...generationConfig, count: "1" }, recoveredPrompt, references, undefined, options).then((items) => items[0])
+                        : await requestGeneration({ ...generationConfig, count: "1" }, recoveredPrompt, options).then((items) => items[0]);
                     const uploaded = await storeGeneratedImage(image);
                     const defaults = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                     const size = fitNodeSize(uploaded.width, uploaded.height, defaults.width, defaults.height);
-                    setNodes((prev) => prev.map((node) => {
-                        if (node.id === pendingNode.id) {
-                            const center = { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 };
-                            return {
-                                ...node,
-                                position: { x: center.x - size.width / 2, y: center.y - size.height / 2 },
-                                width: size.width,
-                                height: size.height,
-                                metadata: { ...node.metadata, ...imageMetadata(uploaded), taskStatus: "succeeded", taskStatusUpdatedAt: new Date().toISOString(), errorDetails: undefined },
-                            };
-                        }
-                        if (pendingNode.metadata?.batchRootId && node.id === pendingNode.metadata.batchRootId && !node.metadata?.content) {
-                            return { ...node, metadata: { ...node.metadata, ...imageMetadata(uploaded), primaryImageId: pendingNode.id, errorDetails: undefined } };
-                        }
-                        return node;
-                    }));
+                    setNodes((prev) =>
+                        prev.map((node) => {
+                            if (node.id === pendingNode.id) {
+                                const center = { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 };
+                                return {
+                                    ...node,
+                                    position: { x: center.x - size.width / 2, y: center.y - size.height / 2 },
+                                    width: size.width,
+                                    height: size.height,
+                                    metadata: {
+                                        ...node.metadata,
+                                        ...imageMetadata(uploaded),
+                                        sourcePrompt: node.metadata?.sourcePrompt || metadata.sourcePrompt || metadata.prompt,
+                                        effectivePrompt: node.metadata?.effectivePrompt || metadata.effectivePrompt || recoveredPrompt,
+                                        imageStyleSnapshot:
+                                            node.metadata?.imageStyleSnapshot || metadata.imageStyleSnapshot || compileCanvasImagePrompt(metadata.sourcePrompt || metadata.prompt || "", metadata, imageStyleSelectionForNode(pendingNode)).styleSnapshot,
+                                        taskStatus: "succeeded",
+                                        taskStatusUpdatedAt: new Date().toISOString(),
+                                        errorDetails: undefined,
+                                    },
+                                };
+                            }
+                            if (pendingNode.metadata?.batchRootId && node.id === pendingNode.metadata.batchRootId && !node.metadata?.content) {
+                                return { ...node, metadata: { ...node.metadata, ...imageMetadata(uploaded), primaryImageId: pendingNode.id, errorDetails: undefined } };
+                            }
+                            return node;
+                        }),
+                    );
                     acknowledgeImageTaskAfterRender(image.serverTaskId || taskId);
                 } catch (error) {
                     if (isGenerationCanceled(error)) return;
@@ -1910,11 +2080,59 @@ function InfiniteCanvasPage() {
     }, []);
 
     const handleNodePromptChange = useCallback((nodeId: string, prompt: string) => {
-        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt } } : node)));
+        const current = nodesRef.current.find((node) => node.id === nodeId);
+        const previousMetadata = current?.metadata;
+        const previousDisplay = previousMetadata?.effectivePrompt || previousMetadata?.prompt || previousMetadata?.sourcePrompt || "";
+        const hadCompiledPrompt = Boolean(previousMetadata?.effectivePrompt);
+        // The prompt editor displays the provider-facing text. If the user
+        // types before/after the generated style block, recover the editable
+        // source now so the next generation keeps that text instead of
+        // treating the old block as the subject.
+        const sourcePrompt = hadCompiledPrompt || previousMetadata?.sourcePrompt !== undefined ? sourcePromptFromDisplay(prompt, previousMetadata?.sourcePrompt || "", previousDisplay) : undefined;
+        setNodes((prev) =>
+            prev.map((node) => {
+                if (node.id !== nodeId) return node;
+                return {
+                    ...node,
+                    metadata: {
+                        ...node.metadata,
+                        prompt,
+                        ...(sourcePrompt !== undefined ? { sourcePrompt } : { sourcePrompt: undefined }),
+                        effectivePrompt: undefined,
+                        imageStyleSnapshot: undefined,
+                    },
+                };
+            }),
+        );
     }, []);
 
-    const handleConfigNodeChange = useCallback((nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => {
-        setNodes((prev) => prev.map((node) => (node.id === nodeId ? applyNodeConfigPatch(node, patch) : node)));
+    const handleConfigNodeChange = useCallback((nodeId: string, patch: Partial<NonNullable<CanvasNodeData["metadata"]>>) => {
+        const hasComposerContent = Object.prototype.hasOwnProperty.call(patch, "composerContent");
+        const hasPrompt = Object.prototype.hasOwnProperty.call(patch, "prompt");
+        const invalidatesCompiledPrompt = hasComposerContent || hasPrompt;
+        const safePatch =
+            invalidatesCompiledPrompt && !Object.prototype.hasOwnProperty.call(patch, "effectivePrompt")
+                ? {
+                      ...patch,
+                      // Keep the two prompt representations mutually exclusive
+                      // when a user edits one of them.  Otherwise retry can fall
+                      // back to a stale provider-facing metadata.prompt.
+                      ...(hasComposerContent && !hasPrompt ? { prompt: undefined } : {}),
+                      ...(hasPrompt && !hasComposerContent ? { composerContent: undefined } : {}),
+                      sourcePrompt: undefined,
+                      effectivePrompt: undefined,
+                      imageStyleSnapshot: undefined,
+                  }
+                : patch;
+        setNodes((prev) =>
+            prev.map((node) => {
+                if (node.id !== nodeId) return node;
+                // Config nodes use the same metadata boundary as Agent/plugin
+                // updates so style aliases and stale compiled prompts cannot
+                // survive a selector change.
+                return applyNodeConfigPatch(node, mergeCanvasNodeMetadata(node.metadata, safePatch as CanvasNodeMetadata));
+            }),
+        );
     }, []);
 
     const downloadNodeImage = useCallback((node: CanvasNodeData) => {
@@ -2023,6 +2241,10 @@ function InfiniteCanvasPage() {
             metadata: {
                 ...imageMetadata(image),
                 prompt: node.metadata?.prompt,
+                sourcePrompt: node.metadata?.sourcePrompt,
+                effectivePrompt: node.metadata?.effectivePrompt,
+                imageStyle: node.metadata?.imageStyle,
+                imageStyleSnapshot: node.metadata?.imageStyleSnapshot,
             },
         };
         setNodes((prev) => [...prev, child]);
@@ -2056,6 +2278,10 @@ function InfiniteCanvasPage() {
                         metadata: {
                             ...imageMetadata(image),
                             prompt: node.metadata?.prompt,
+                            sourcePrompt: node.metadata?.sourcePrompt,
+                            effectivePrompt: node.metadata?.effectivePrompt,
+                            imageStyle: node.metadata?.imageStyle,
+                            imageStyleSnapshot: node.metadata?.imageStyleSnapshot,
                         },
                     } satisfies CanvasNodeData;
                 }),
@@ -2087,6 +2313,10 @@ function InfiniteCanvasPage() {
                     metadata: {
                         ...imageMetadata(uploaded),
                         prompt: node.metadata.prompt,
+                        sourcePrompt: node.metadata.sourcePrompt,
+                        effectivePrompt: node.metadata.effectivePrompt,
+                        imageStyle: node.metadata.imageStyle,
+                        imageStyleSnapshot: node.metadata.imageStyleSnapshot,
                     },
                 };
                 setNodes((prev) => [...prev, childNode]);
@@ -2118,6 +2348,10 @@ function InfiniteCanvasPage() {
             metadata: {
                 ...imageMetadata(image),
                 prompt: node.metadata?.prompt,
+                sourcePrompt: node.metadata?.sourcePrompt,
+                effectivePrompt: node.metadata?.effectivePrompt,
+                imageStyle: node.metadata?.imageStyle,
+                imageStyleSnapshot: node.metadata?.imageStyleSnapshot,
             },
         };
         setNodes((prev) => [...prev, child]);
@@ -2138,9 +2372,15 @@ function InfiniteCanvasPage() {
             const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
             const title = buildAngleLabel(params);
             const prompt = buildAnglePrompt(params);
-            const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, 1, [
-                { id: node.id, name: `${node.title || node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey },
-            ]);
+            const imageStyle = imageStyleSelectionForNode(node);
+            const imagePrompt = compileImagePrompt(prompt, imageStyle);
+            const generationMetadata = buildImageGenerationMetadata(
+                "edit",
+                generationConfig,
+                1,
+                [{ id: node.id, name: `${node.title || node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey }],
+                { imageStyle, imageStyleSnapshot: imagePrompt.styleSnapshot, sourcePrompt: imagePrompt.sourcePrompt, effectivePrompt: imagePrompt.effectivePrompt },
+            );
             setAngleNodeId(null);
             setRunningNodeId(childId);
             setNodes((prev) => [
@@ -2152,7 +2392,7 @@ function InfiniteCanvasPage() {
                     position: { x: node.position.x + node.width + 96, y: node.position.y },
                     width: imageConfig.width,
                     height: imageConfig.height,
-                    metadata: { prompt, status: NODE_STATUS_LOADING, ...generationMetadata },
+                    metadata: { prompt: imagePrompt.effectivePrompt, status: NODE_STATUS_LOADING, ...generationMetadata },
                 },
             ]);
             setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
@@ -2162,14 +2402,25 @@ function InfiniteCanvasPage() {
             try {
                 const image = await requestEdit(
                     generationConfig,
-                    prompt,
+                    imagePrompt.effectivePrompt,
                     [{ id: node.id, name: `${node.title || node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey }],
                     undefined,
-                    imageTaskOptions(childId, controller),
+                    imageTaskOptions(childId, controller, undefined, imagePrompt.styleSnapshot),
                 ).then((items) => items[0]);
                 const uploaded = await storeGeneratedImage(image);
                 const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata, taskStatus: "succeeded", taskStatusUpdatedAt: new Date().toISOString() } } : item)));
+                setNodes((prev) =>
+                    prev.map((item) =>
+                        item.id === childId
+                            ? {
+                                  ...item,
+                                  width: size.width,
+                                  height: size.height,
+                                  metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt: imagePrompt.effectivePrompt, ...generationMetadata, taskStatus: "succeeded", taskStatusUpdatedAt: new Date().toISOString() },
+                              }
+                            : item,
+                    ),
+                );
                 acknowledgeImageTaskAfterRender(image.serverTaskId);
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
@@ -2339,11 +2590,31 @@ function InfiniteCanvasPage() {
             if (sourceNode && builtinPanel?.writeBackToSelf && builtinPanel.mode === "image") {
                 const scene = prompt.trim();
                 if (!scene) return;
+                const fullPrompt = (builtinPanel.promptPrefix || "") + scene;
+                const imageStyle = imageStyleSelectionForNode(sourceNode);
+                const imagePrompt = compileImagePrompt(fullPrompt, imageStyle);
                 setRunningNodeId(nodeId);
                 const controller = startGenerationRequest(nodeId, nodeId, nodeId);
-                setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt: scene, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node)));
+                setNodes((prev) =>
+                    prev.map((node) =>
+                        node.id === nodeId
+                            ? {
+                                  ...node,
+                                  metadata: {
+                                      ...node.metadata,
+                                      prompt: scene,
+                                      sourcePrompt: imagePrompt.sourcePrompt,
+                                      effectivePrompt: imagePrompt.effectivePrompt,
+                                      imageStyle,
+                                      imageStyleSnapshot: imagePrompt.styleSnapshot,
+                                      status: NODE_STATUS_LOADING,
+                                      errorDetails: undefined,
+                                  },
+                              }
+                            : node,
+                    ),
+                );
                 try {
-                    const fullPrompt = (builtinPanel.promptPrefix || "") + scene;
                     // 上游图片节点作为参考图(图生图);无上游则纯文生图
                     const upstreamNodes = connectionsRef.current
                         .filter((conn) => conn.toNodeId === nodeId)
@@ -2355,11 +2626,31 @@ function InfiniteCanvasPage() {
                             : [],
                     );
                     const image = refs.length
-                        ? await requestEdit({ ...generationConfig, count: "1" }, fullPrompt, refs, undefined, imageTaskOptions(nodeId, controller)).then((items) => items[0])
-                        : await requestGeneration({ ...generationConfig, count: "1" }, fullPrompt, imageTaskOptions(nodeId, controller)).then((items) => items[0]);
+                        ? await requestEdit({ ...generationConfig, count: "1" }, imagePrompt.effectivePrompt, refs, undefined, imageTaskOptions(nodeId, controller, undefined, imagePrompt.styleSnapshot)).then((items) => items[0])
+                        : await requestGeneration({ ...generationConfig, count: "1" }, imagePrompt.effectivePrompt, imageTaskOptions(nodeId, controller, undefined, imagePrompt.styleSnapshot)).then((items) => items[0]);
                     const uploaded = await storeGeneratedImage(image);
                     setNodes((prev) =>
-                        prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...imageMetadata(uploaded), prompt: scene, model: generationConfig.model, status: NODE_STATUS_SUCCESS, taskStatus: "succeeded", taskStatusUpdatedAt: new Date().toISOString(), errorDetails: undefined } } : node)),
+                        prev.map((node) =>
+                            node.id === nodeId
+                                ? {
+                                      ...node,
+                                      metadata: {
+                                          ...node.metadata,
+                                          ...imageMetadata(uploaded),
+                                          prompt: scene,
+                                          sourcePrompt: imagePrompt.sourcePrompt,
+                                          effectivePrompt: imagePrompt.effectivePrompt,
+                                          imageStyle,
+                                          imageStyleSnapshot: imagePrompt.styleSnapshot,
+                                          model: generationConfig.model,
+                                          status: NODE_STATUS_SUCCESS,
+                                          taskStatus: "succeeded",
+                                          taskStatusUpdatedAt: new Date().toISOString(),
+                                          errorDetails: undefined,
+                                      },
+                                  }
+                                : node,
+                        ),
                     );
                     acknowledgeImageTaskAfterRender(image.serverTaskId);
                     setDialogNodeId(null);
@@ -2379,10 +2670,16 @@ function InfiniteCanvasPage() {
             const runController = startGenerationRequest(nodeId, nodeId, nodeId);
             const sourceTextContent = sourceNode?.type === CanvasNodeType.Text ? sourceNode.metadata?.content?.trim() || "" : "";
             const editingTextNode = mode === "text" && Boolean(sourceTextContent);
+            const requestedPrompt = mode === "image" ? sourcePromptForImageGeneration(sourceNode, prompt) : prompt;
             const generationContext = await hydrateNodeGenerationContext(
-                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${prompt}` : prompt),
+                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${requestedPrompt}` : requestedPrompt),
             );
-            const effectivePrompt = generationContext.prompt.trim();
+            const contextPrompt = generationContext.prompt.trim();
+            const imageStyle = mode === "image" ? imageStyleSelectionForNode(sourceNode) : undefined;
+            const savedPromptMatchesContext = Boolean(sourceNode?.metadata?.effectivePrompt && (sourceNode.metadata.sourcePrompt?.trim() === contextPrompt || sourceNode.metadata.effectivePrompt.trim() === contextPrompt));
+            const imagePrompt = mode === "image" ? compileCanvasImagePrompt(contextPrompt, sourceNode?.metadata, imageStyle, savedPromptMatchesContext) : undefined;
+            const sourcePrompt = imagePrompt?.sourcePrompt || contextPrompt;
+            const effectivePrompt = imagePrompt?.effectivePrompt.trim() || contextPrompt;
             if (runController.signal.aborted) {
                 finishGenerationRequest(nodeId, runController);
                 setRunningNodeId(null);
@@ -2410,7 +2707,12 @@ function InfiniteCanvasPage() {
                             : [];
                     const referenceImages = sourceReference.length ? sourceReference : generationContext.referenceImages;
                     const generationType = referenceImages.length ? ("edit" as const) : ("generation" as const);
-                    const generationMetadata = buildImageGenerationMetadata(generationType, generationConfig, count, referenceImages);
+                    const generationMetadata = buildImageGenerationMetadata(generationType, generationConfig, count, referenceImages, {
+                        imageStyle,
+                        imageStyleSnapshot: imagePrompt?.styleSnapshot,
+                        sourcePrompt,
+                        effectivePrompt,
+                    });
                     const parentConfig = NODE_DEFAULT_SIZE[isConfigNode ? CanvasNodeType.Config : isImageNode ? CanvasNodeType.Image : CanvasNodeType.Text];
                     const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                     const parentPosition = sourceNode?.position || { x: 0, y: 0 };
@@ -2460,7 +2762,7 @@ function InfiniteCanvasPage() {
                                 ? isConfigNode
                                     ? {
                                           ...node,
-                                          metadata: { ...node.metadata, prompt: effectivePrompt, status: NODE_STATUS_LOADING, errorDetails: undefined },
+                                          metadata: { ...node.metadata, prompt: effectivePrompt, sourcePrompt, effectivePrompt, imageStyle, imageStyleSnapshot: imagePrompt?.styleSnapshot, status: NODE_STATUS_LOADING, errorDetails: undefined },
                                       }
                                     : isEmptyImageNode
                                       ? {
@@ -2503,8 +2805,8 @@ function InfiniteCanvasPage() {
                         targetIds.map(async (targetId) => {
                             try {
                                 const image = referenceImages.length
-                                    ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, imageTaskOptions(targetId, controller)).then((items) => items[0])
-                                    : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt, imageTaskOptions(targetId, controller)).then((items) => items[0]);
+                                    ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, imageTaskOptions(targetId, controller, undefined, imagePrompt?.styleSnapshot)).then((items) => items[0])
+                                    : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt, imageTaskOptions(targetId, controller, undefined, imagePrompt?.styleSnapshot)).then((items) => items[0]);
                                 const uploaded = await storeGeneratedImage(image);
                                 const imageSize = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
                                 setNodes((prev) => {
@@ -2752,10 +3054,20 @@ function InfiniteCanvasPage() {
             }
             const sourceNode = findRetrySourceNode(node.id, nodesRef.current, connectionsRef.current) || node;
             const batchRoot = node.metadata?.batchRootId ? nodesRef.current.find((item) => item.id === node.metadata?.batchRootId) : null;
-            const savedImageMetadata = node.type === CanvasNodeType.Image ? { ...batchRoot?.metadata, ...node.metadata } : undefined;
+            const savedImageMetadata = node.type === CanvasNodeType.Image || node.type === CanvasNodeType.Config ? { ...batchRoot?.metadata, ...node.metadata } : undefined;
             const hasSavedImageMetadata = Boolean(savedImageMetadata?.generationType);
+            const isImageRetry = node.type !== CanvasNodeType.Text && node.type !== CanvasNodeType.Video && node.type !== CanvasNodeType.Audio;
+            // A cleared effectivePrompt is the dirty marker written by both
+            // the prompt/style UI and Agent/plugin metadata updates.  A dirty
+            // upstream Config must rebuild the whole generation context; a
+            // dirty Image only needs its prompt/style recompiled while its
+            // saved model/reference configuration remains reusable.
+            const targetPromptDirty = isImageRetry && !node.metadata?.effectivePrompt;
+            const sourceConfigDirty = sourceNode.type === CanvasNodeType.Config && !sourceNode.metadata?.effectivePrompt;
+            const imageNeedsFreshContext = targetPromptDirty || sourceConfigDirty;
+            const reuseSavedGeneration = hasSavedImageMetadata && !sourceConfigDirty;
             const generationConfig =
-                hasSavedImageMetadata && savedImageMetadata
+                reuseSavedGeneration && savedImageMetadata
                     ? {
                           ...effectiveConfig,
                           model: savedImageMetadata.model || effectiveConfig.imageModel || effectiveConfig.model,
@@ -2770,16 +3082,36 @@ function InfiniteCanvasPage() {
                 return;
             }
 
-            const context = hasSavedImageMetadata ? null : await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, sourceNode.metadata?.prompt || node.metadata?.prompt || ""));
-            const prompt = (savedImageMetadata?.prompt || context?.prompt || "").trim();
+            const retrySourcePrompt = targetPromptDirty
+                ? node.metadata?.sourcePrompt || node.metadata?.prompt || sourceNode.metadata?.sourcePrompt || sourceNode.metadata?.prompt || ""
+                : savedImageMetadata?.sourcePrompt || (hasSavedImageMetadata ? savedImageMetadata?.prompt : undefined) || sourceNode.metadata?.sourcePrompt || sourceNode.metadata?.prompt || node.metadata?.sourcePrompt || node.metadata?.prompt || "";
+            const currentComposerContent = sourceNode.type === CanvasNodeType.Config && typeof sourceNode.metadata?.composerContent === "string" ? sourceNode.metadata.composerContent : undefined;
+            // Config nodes must be rebuilt from composerContent tokens so
+            // upstream text/reference nodes remain connected. Image nodes
+            // can safely use their saved raw prompt directly.
+            const retryContextPrompt = sourceNode.type === CanvasNodeType.Config ? (currentComposerContent !== undefined ? currentComposerContent : sourceNode.metadata?.sourcePrompt || sourceNode.metadata?.prompt || retrySourcePrompt) : retrySourcePrompt;
+            const context = reuseSavedGeneration ? null : await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, retryContextPrompt));
+            const rawPrompt = (sourceConfigDirty ? (context?.prompt ?? "") : targetPromptDirty ? retrySourcePrompt : savedImageMetadata?.sourcePrompt || context?.prompt || savedImageMetadata?.prompt || "").trim();
+            const retryImageStyle = sourceConfigDirty
+                ? imageStyleSelectionForNode(sourceNode)
+                : targetPromptDirty
+                  ? imageStyleSelectionForNode(node)
+                  : savedImageMetadata?.imageStyle || imageStyleSelectionFromSnapshot(savedImageMetadata?.imageStyleSnapshot) || imageStyleSelectionForNode(sourceNode);
+            // Config nodes fall through to the image retry path as well. Keep
+            // their recipe compiled so a failed config generation can be
+            // retried with the same visual language.
+            const retryImagePrompt = isImageRetry ? compileCanvasImagePrompt(rawPrompt, savedImageMetadata, retryImageStyle, !imageNeedsFreshContext) : undefined;
+            const prompt = (retryImagePrompt?.effectivePrompt || rawPrompt).trim();
+            const sourcePrompt = retryImagePrompt?.sourcePrompt || rawPrompt;
+            const imageStyleSnapshot = retryImagePrompt?.styleSnapshot;
             if (!prompt) {
                 message.warning("找不到提示词，无法重试");
                 return;
             }
-            const generationType = savedImageMetadata?.generationType;
+            const generationType = reuseSavedGeneration ? savedImageMetadata?.generationType : undefined;
             const useReferenceImages = generationType ? generationType === "edit" : Boolean(context?.referenceImages.length);
             const retryReferenceImages =
-                hasSavedImageMetadata && savedImageMetadata ? await resolveMetadataReferences(savedImageMetadata) : useReferenceImages ? (context?.referenceImages.length ? context.referenceImages : sourceNodeReferenceImages(batchRoot || sourceNode)) : [];
+                reuseSavedGeneration && savedImageMetadata ? await resolveMetadataReferences(savedImageMetadata) : useReferenceImages ? (context?.referenceImages.length ? context.referenceImages : sourceNodeReferenceImages(batchRoot || sourceNode)) : [];
             if (useReferenceImages && !retryReferenceImages) {
                 message.error("参考图片已丢失，无法继续重试");
                 setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails: "参考图片已丢失，无法继续重试" } } : item)));
@@ -2844,22 +3176,32 @@ function InfiniteCanvasPage() {
                 }
 
                 const image = useReferenceImages
-                    ? await requestEdit(generationConfig, prompt, retryImages, undefined, imageTaskOptions(node.id, controller)).then((items) => items[0])
-                    : await requestGeneration(generationConfig, prompt, imageTaskOptions(node.id, controller)).then((items) => items[0]);
+                    ? await requestEdit(generationConfig, prompt, retryImages, undefined, imageTaskOptions(node.id, controller, undefined, imageStyleSnapshot)).then((items) => items[0])
+                    : await requestGeneration(generationConfig, prompt, imageTaskOptions(node.id, controller, undefined, imageStyleSnapshot)).then((items) => items[0]);
                 const uploadedImage = await storeGeneratedImage(image);
                 const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                 const imageSize = fitNodeSize(uploadedImage.width, uploadedImage.height, imageConfig.width, imageConfig.height);
-                const generationMetadata = savedImageMetadata?.generationType
-                    ? {
-                          generationType: savedImageMetadata.generationType,
-                          model: generationConfig.model,
-                          size: generationConfig.size,
-                          quality: generationConfig.quality,
-                          ...(generationConfig.background ? { background: generationConfig.background } : {}),
-                          count: savedImageMetadata.count || 1,
-                          references: savedImageMetadata.references,
-                      }
-                    : buildImageGenerationMetadata(useReferenceImages ? "edit" : "generation", generationConfig, 1, retryImages);
+                const generationMetadata =
+                    reuseSavedGeneration && savedImageMetadata?.generationType
+                        ? {
+                              generationType: savedImageMetadata.generationType,
+                              model: generationConfig.model,
+                              size: generationConfig.size,
+                              quality: generationConfig.quality,
+                              ...(generationConfig.background ? { background: generationConfig.background } : {}),
+                              count: savedImageMetadata.count || 1,
+                              references: savedImageMetadata.references,
+                              imageStyle: imageNeedsFreshContext ? retryImageStyle : savedImageMetadata.imageStyle || retryImageStyle,
+                              imageStyleSnapshot: imageNeedsFreshContext ? imageStyleSnapshot : savedImageMetadata.imageStyleSnapshot || imageStyleSnapshot,
+                              sourcePrompt,
+                              effectivePrompt: prompt,
+                          }
+                        : buildImageGenerationMetadata(useReferenceImages ? "edit" : "generation", generationConfig, 1, retryImages, {
+                              imageStyle: retryImageStyle,
+                              imageStyleSnapshot,
+                              sourcePrompt,
+                              effectivePrompt: prompt,
+                          });
                 setNodes((prev) =>
                     prev.map((item) =>
                         item.id === node.id
@@ -2868,7 +3210,7 @@ function InfiniteCanvasPage() {
                                   type: CanvasNodeType.Image,
                                   width: imageSize.width,
                                   height: imageSize.height,
-                                  metadata: { ...item.metadata, ...imageMetadata(uploadedImage), prompt, ...generationMetadata, taskStatus: "succeeded", taskStatusUpdatedAt: new Date().toISOString() },
+                                  metadata: { ...item.metadata, ...imageMetadata(uploadedImage), prompt, sourcePrompt, effectivePrompt: prompt, ...generationMetadata, taskStatus: "succeeded", taskStatusUpdatedAt: new Date().toISOString() },
                               }
                             : item,
                     ),

@@ -4,13 +4,14 @@ import type { CanvasAgentOp } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasTheme } from "@/lib/canvas-theme";
 import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "@/types/canvas";
 import type { CanvasResourceKind } from "@/lib/canvas/canvas-resource-references";
+import type { ImageStyleSelection } from "@/types/image-style";
 
 // 插件节点作为上游输入被消费时输出的资源
 export type CanvasNodeResource = { kind: CanvasResourceKind; text?: string; url?: string };
 
 // --- AI 生成能力(生图/生视频/生文本),由宿主注入,复用宿主模型/密钥配置 ---
 export type GenerateOptions = { signal?: AbortSignal; references?: string[]; model?: string };
-export type GenerateImageOptions = GenerateOptions & { count?: number; size?: string };
+export type GenerateImageOptions = GenerateOptions & { count?: number; size?: string; imageStyle?: ImageStyleSelection };
 export type GenerateImageResult = { images: string[] };
 export type GenerateVideoOptions = GenerateOptions & { size?: string; seconds?: string };
 export type GenerateVideoResult = { url: string; mimeType: string; width?: number; height?: number; durationMs?: number };

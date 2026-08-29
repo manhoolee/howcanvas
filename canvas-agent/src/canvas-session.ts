@@ -5,8 +5,21 @@ import { type ToolName } from "./schemas.js";
 import { compactCanvasState, compactNode, isToolName, nextCanvasX, parseToolInput } from "./tools.js";
 import type { AgentAttachment, CanvasNode, CanvasNodeType, CanvasSnapshot } from "./types.js";
 
-type PendingRequest = { clientId: string; resolve: (value: unknown) => void; reject: (error: Error) => void };
-type TurnAttachment = { clientId: string; id: string; name: string; type: string; size: number; width: number; height: number; dataUrl: string };
+type PendingRequest = {
+    clientId: string;
+    resolve: (value: unknown) => void;
+    reject: (error: Error) => void;
+};
+type TurnAttachment = {
+    clientId: string;
+    id: string;
+    name: string;
+    type: string;
+    size: number;
+    width: number;
+    height: number;
+    dataUrl: string;
+};
 export type CodexState = { busy: boolean; threadId: string; turnId: string };
 
 const SITE_TOOLS = new Set<ToolName>([
@@ -42,7 +55,12 @@ export class CanvasSession {
     }
 
     health() {
-        return { ok: true, hasCanvas: Boolean(this.canvasState), clients: this.clients.size, codexBusy: this.codexState.busy };
+        return {
+            ok: true,
+            hasCanvas: Boolean(this.canvasState),
+            clients: this.clients.size,
+            codexBusy: this.codexState.busy,
+        };
     }
 
     get codexBusy() {
@@ -57,7 +75,11 @@ export class CanvasSession {
     openEvents(url: URL, res: ServerResponse) {
         const clientId = url.searchParams.get("clientId") || crypto.randomUUID();
         const statusOnly = url.searchParams.get("role") === "status";
-        res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+        res.writeHead(200, {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+        });
         if (!statusOnly) {
             this.clients.set(clientId, res);
             if (!this.clientFocusOrder.has(clientId)) this.clientFocusOrder.set(clientId, 0);
@@ -87,7 +109,10 @@ export class CanvasSession {
     updateState(body: unknown, clientId?: string) {
         const targetClientId = clientId || this.activeClientId;
         if (!targetClientId) return;
-        this.canvasStates.set(targetClientId, { ...((body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>), clientId: targetClientId } as CanvasSnapshot);
+        this.canvasStates.set(targetClientId, {
+            ...((body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>),
+            clientId: targetClientId,
+        } as CanvasSnapshot);
     }
 
     activateClient(clientId: string) {
@@ -121,7 +146,16 @@ export class CanvasSession {
                 dataUrl: item.dataUrl,
             };
             this.turnAttachments.set(id, attachment);
-            return [{ id, name: attachment.name, type: attachment.type, size: attachment.size, width: attachment.width, height: attachment.height }];
+            return [
+                {
+                    id,
+                    name: attachment.name,
+                    type: attachment.type,
+                    size: attachment.size,
+                    width: attachment.width,
+                    height: attachment.height,
+                },
+            ];
         });
     }
 
@@ -167,21 +201,77 @@ export class CanvasSession {
         if (tool === "canvas_get_state" || tool === "canvas_export_snapshot") return compactCanvasState(this.canvasState);
         if (tool === "canvas_get_selection") {
             const ids = new Set(this.canvasState?.selectedNodeIds || []);
-            return { nodes: (this.canvasState?.nodes || []).filter((node) => ids.has(node.id)).map(compactNode) };
+            return {
+                nodes: (this.canvasState?.nodes || []).filter((node) => ids.has(node.id)).map(compactNode),
+            };
         }
-        if (tool === "canvas_create_attachment_nodes") return await this.createAttachmentNodes(input as { attachmentIds: string[]; x?: number; y?: number; gap?: number; direction?: "row" | "column" });
+        if (tool === "canvas_create_attachment_nodes")
+            return await this.createAttachmentNodes(
+                input as {
+                    attachmentIds: string[];
+                    x?: number;
+                    y?: number;
+                    gap?: number;
+                    direction?: "row" | "column";
+                },
+            );
         if (tool === "canvas_create_node") {
-            const data = input as { nodeType: CanvasNodeType; title?: string; x?: number; y?: number; width?: number; height?: number; metadata?: Record<string, unknown> };
-            input = { ops: [{ type: "add_node", nodeType: data.nodeType, title: data.title, position: { x: data.x ?? nextCanvasX(this.canvasState), y: data.y ?? 0 }, width: data.width, height: data.height, metadata: data.metadata }] };
+            const data = input as {
+                nodeType: CanvasNodeType;
+                title?: string;
+                x?: number;
+                y?: number;
+                width?: number;
+                height?: number;
+                metadata?: Record<string, unknown>;
+            };
+            input = {
+                ops: [
+                    {
+                        type: "add_node",
+                        nodeType: data.nodeType,
+                        title: data.title,
+                        position: {
+                            x: data.x ?? nextCanvasX(this.canvasState),
+                            y: data.y ?? 0,
+                        },
+                        width: data.width,
+                        height: data.height,
+                        metadata: data.metadata,
+                    },
+                ],
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_create_text_node") {
-            const text = input as { text?: string; x?: number; y?: number; title?: string; width?: number; height?: number };
-            input = { ops: [textNodeOp(text, text.x ?? nextCanvasX(this.canvasState), text.y ?? 0)] };
+            const text = input as {
+                text?: string;
+                x?: number;
+                y?: number;
+                title?: string;
+                width?: number;
+                height?: number;
+            };
+            input = {
+                ops: [textNodeOp(text, text.x ?? nextCanvasX(this.canvasState), text.y ?? 0)],
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_create_text_nodes") {
-            const data = input as { items: Array<{ text: string; title?: string; x?: number; y?: number; width?: number; height?: number }>; x?: number; y?: number; gap?: number; direction?: "row" | "column" };
+            const data = input as {
+                items: Array<{
+                    text: string;
+                    title?: string;
+                    x?: number;
+                    y?: number;
+                    width?: number;
+                    height?: number;
+                }>;
+                x?: number;
+                y?: number;
+                gap?: number;
+                direction?: "row" | "column";
+            };
             const x = Number(data.x ?? nextCanvasX(this.canvasState));
             const y = Number(data.y ?? 0);
             const gap = Number(data.gap ?? 40);
@@ -191,7 +281,9 @@ export class CanvasSession {
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_create_image_prompt_flow") {
-            input = { ops: generationFlowOps({ ...(input as Record<string, unknown>), mode: "image" }, this.canvasState) };
+            input = {
+                ops: generationFlowOps({ ...(input as Record<string, unknown>), mode: "image" }, this.canvasState),
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_create_config_node") {
@@ -201,62 +293,152 @@ export class CanvasSession {
             const configId = `config-${crypto.randomUUID()}`;
             const mode = generationMode(data.mode);
             const prompt = String(data.prompt || "");
-            input = { ops: [configNodeOp(configId, data, x, y), ...(data.autoRun ? [runGenerationOp(configId, mode, prompt)] : [])] };
+            input = {
+                ops: [configNodeOp(configId, data, x, y), ...(data.autoRun ? [runGenerationOp(configId, mode, prompt, imageStyleMetadata(data).imageStyle)] : [])],
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_create_generation_flow") {
-            input = { ops: generationFlowOps(input as Record<string, unknown>, this.canvasState) };
+            input = {
+                ops: generationFlowOps(input as Record<string, unknown>, this.canvasState),
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_generate_text" || tool === "canvas_generate_image" || tool === "canvas_generate_video" || tool === "canvas_generate_audio") {
-            input = { ops: generationFlowOps({ ...(input as Record<string, unknown>), mode: tool.replace("canvas_generate_", ""), autoRun: true }, this.canvasState) };
+            input = {
+                ops: generationFlowOps(
+                    {
+                        ...(input as Record<string, unknown>),
+                        mode: tool.replace("canvas_generate_", ""),
+                        autoRun: true,
+                    },
+                    this.canvasState,
+                ),
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_update_node") {
-            const data = input as { id: string; patch?: Record<string, unknown>; metadata?: Record<string, unknown> };
-            input = { ops: [{ type: "update_node", id: data.id, patch: data.patch, metadata: data.metadata }] };
+            const data = input as {
+                id: string;
+                patch?: Record<string, unknown>;
+                metadata?: Record<string, unknown>;
+            };
+            input = {
+                ops: [
+                    {
+                        type: "update_node",
+                        id: data.id,
+                        patch: data.patch,
+                        metadata: data.metadata,
+                    },
+                ],
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_update_node_text") {
             const data = input as { id: string; text: string; title?: string };
-            input = { ops: [{ type: "update_node", id: data.id, patch: { ...(data.title ? { title: data.title } : {}) }, metadata: { content: data.text, status: "success" } }] };
+            input = {
+                ops: [
+                    {
+                        type: "update_node",
+                        id: data.id,
+                        patch: { ...(data.title ? { title: data.title } : {}) },
+                        metadata: { content: data.text, status: "success" },
+                    },
+                ],
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_move_nodes") {
-            const data = input as { items: Array<{ id: string; x?: number; y?: number; dx?: number; dy?: number }> };
+            const data = input as {
+                items: Array<{
+                    id: string;
+                    x?: number;
+                    y?: number;
+                    dx?: number;
+                    dy?: number;
+                }>;
+            };
             input = {
                 ops: data.items.map((item) => {
                     const current = findNode(this.canvasState, item.id);
-                    return { type: "update_node", id: item.id, patch: { position: { x: item.x ?? ((current?.position.x || 0) + (item.dx || 0)), y: item.y ?? ((current?.position.y || 0) + (item.dy || 0)) } } };
+                    return {
+                        type: "update_node",
+                        id: item.id,
+                        patch: {
+                            position: {
+                                x: item.x ?? (current?.position.x || 0) + (item.dx || 0),
+                                y: item.y ?? (current?.position.y || 0) + (item.dy || 0),
+                            },
+                        },
+                    };
                 }),
             };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_resize_node") {
-            const data = input as { id: string; width: number; height: number; freeResize?: boolean };
-            input = { ops: [{ type: "update_node", id: data.id, patch: { width: data.width, height: data.height }, metadata: data.freeResize === undefined ? undefined : { freeResize: data.freeResize } }] };
+            const data = input as {
+                id: string;
+                width: number;
+                height: number;
+                freeResize?: boolean;
+            };
+            input = {
+                ops: [
+                    {
+                        type: "update_node",
+                        id: data.id,
+                        patch: { width: data.width, height: data.height },
+                        metadata: data.freeResize === undefined ? undefined : { freeResize: data.freeResize },
+                    },
+                ],
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_delete_nodes") {
-            input = { ops: [{ type: "delete_node", ids: (input as { ids: string[] }).ids }] };
+            input = {
+                ops: [{ type: "delete_node", ids: (input as { ids: string[] }).ids }],
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_connect_nodes") {
-            const data = input as { connections: Array<{ fromNodeId: string; toNodeId: string }> };
-            input = { ops: data.connections.map((connection) => ({ type: "connect_nodes", ...connection })) };
+            const data = input as {
+                connections: Array<{ fromNodeId: string; toNodeId: string }>;
+            };
+            input = {
+                ops: data.connections.map((connection) => ({
+                    type: "connect_nodes",
+                    ...connection,
+                })),
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_select_nodes") {
-            input = { ops: [{ type: "select_nodes", ids: (input as { ids: string[] }).ids }] };
+            input = {
+                ops: [{ type: "select_nodes", ids: (input as { ids: string[] }).ids }],
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_set_viewport") {
-            input = { ops: [{ type: "set_viewport", viewport: (input as { viewport: unknown }).viewport }] };
+            input = {
+                ops: [
+                    {
+                        type: "set_viewport",
+                        viewport: (input as { viewport: unknown }).viewport,
+                    },
+                ],
+            };
             tool = "canvas_apply_ops";
         }
         if (tool === "canvas_run_generation") {
-            const data = input as { nodeId: string; mode?: string; prompt?: string };
-            input = { ops: [runGenerationOp(data.nodeId, generationMode(data.mode), data.prompt)] };
+            const data = input as Record<string, unknown> & {
+                nodeId: string;
+                mode?: string;
+                prompt?: string;
+            };
+            input = {
+                ops: [runGenerationOp(data.nodeId, generationMode(data.mode), data.prompt, imageStyleMetadata(data).imageStyle)],
+            };
             tool = "canvas_apply_ops";
         }
         if (tool !== "canvas_apply_ops") throw new Error(`未知工具：${tool}`);
@@ -279,7 +461,10 @@ export class CanvasSession {
                 id: `image-${crypto.randomUUID()}`,
                 attachmentId: attachment.id,
                 title: attachment.name,
-                position: { x: direction === "row" ? x + offset : x, y: direction === "column" ? y + offset : y },
+                position: {
+                    x: direction === "row" ? x + offset : x,
+                    y: direction === "column" ? y + offset : y,
+                },
                 width: size.width,
                 height: size.height,
             };
@@ -287,7 +472,13 @@ export class CanvasSession {
             return node;
         });
         await this.requestCanvasTool("canvas_create_attachment_nodes", { nodes });
-        return { nodes: nodes.map(({ id, attachmentId, title }) => ({ id, attachmentId, title })) };
+        return {
+            nodes: nodes.map(({ id, attachmentId, title }) => ({
+                id,
+                attachmentId,
+                title,
+            })),
+        };
     }
 
     private async requestCanvasTool(name: ToolName, input: Record<string, unknown>) {
@@ -301,7 +492,11 @@ export class CanvasSession {
                 this.pending.delete(requestId);
                 reject(new Error("画布操作超时"));
             }, 30000);
-            this.pending.set(requestId, { clientId, resolve: (value) => (clearTimeout(timer), resolve(value)), reject: (error) => (clearTimeout(timer), reject(error)) });
+            this.pending.set(requestId, {
+                clientId,
+                resolve: (value) => (clearTimeout(timer), resolve(value)),
+                reject: (error) => (clearTimeout(timer), reject(error)),
+            });
         });
     }
 }
@@ -310,8 +505,27 @@ function sendEvent(res: ServerResponse, type: string, payload: unknown) {
     res.write(`event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`);
 }
 
-function textNodeOp(input: { id?: string; text?: string; title?: string; width?: number; height?: number }, x: number, y: number) {
-    return { type: "add_node", id: input.id, nodeType: "text", title: input.title, position: { x, y }, width: input.width, height: input.height, metadata: { content: input.text || "", status: "success", fontSize: 14 } };
+function textNodeOp(
+    input: {
+        id?: string;
+        text?: string;
+        title?: string;
+        width?: number;
+        height?: number;
+    },
+    x: number,
+    y: number,
+) {
+    return {
+        type: "add_node",
+        id: input.id,
+        nodeType: "text",
+        title: input.title,
+        position: { x, y },
+        width: input.width,
+        height: input.height,
+        metadata: { content: input.text || "", status: "success", fontSize: 14 },
+    };
 }
 
 function configNodeOp(id: string, input: Record<string, unknown>, x: number, y: number) {
@@ -342,6 +556,7 @@ function configNodeOp(id: string, input: Record<string, unknown>, x: number, y: 
             audioFormat: input.audioFormat,
             audioSpeed: input.audioSpeed,
             audioInstructions: input.audioInstructions,
+            ...imageStyleMetadata(input),
         }),
     };
 }
@@ -360,14 +575,24 @@ function generationFlowOps(input: Record<string, unknown>, state: CanvasSnapshot
         textNodeOp({ id: textId, text: prompt, title: String(input.title || "提示词") }, x, y),
         configNodeOp(configId, configInput, x + 420, y),
         { type: "connect_nodes", fromNodeId: textId, toNodeId: configId },
-        ...referenceNodeIds.map((fromNodeId) => ({ type: "connect_nodes", fromNodeId, toNodeId: configId })),
+        ...referenceNodeIds.map((fromNodeId) => ({
+            type: "connect_nodes",
+            fromNodeId,
+            toNodeId: configId,
+        })),
         { type: "select_nodes", ids: [configId] },
-        ...(input.autoRun ? [runGenerationOp(configId, mode, tokens.join("\n"))] : []),
+        ...(input.autoRun ? [runGenerationOp(configId, mode, tokens.join("\n"), imageStyleMetadata(input).imageStyle)] : []),
     ];
 }
 
-function runGenerationOp(nodeId: string, mode: "text" | "image" | "video" | "audio", prompt?: string) {
-    return { type: "run_generation", nodeId, mode, prompt };
+function runGenerationOp(nodeId: string, mode: "text" | "image" | "video" | "audio", prompt?: string, imageStyle?: Record<string, unknown>) {
+    return {
+        type: "run_generation",
+        nodeId,
+        mode,
+        prompt,
+        ...(imageStyle ? { imageStyle } : {}),
+    };
 }
 
 function generationMode(value: unknown): "text" | "image" | "video" | "audio" {
@@ -387,6 +612,72 @@ function findNode(state: CanvasSnapshot | null, id: string): CanvasNode | undefi
 
 function cleanRecord(value: Record<string, unknown>) {
     return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== ""));
+}
+
+const IMAGE_STYLE_DIMENSION_GROUPS = ["composition", "colorGrading", "lighting", "lens", "cameraMovement", "texture", "atmosphere", "editingRhythm"] as const;
+
+/**
+ * Keep the image-style recipe when the standalone canvas-agent creates a
+ * config/flow node.  The agent protocol accepts both flat fields (which are
+ * convenient for tool calls) and a nested imageStyle object (which is what
+ * the web canvas stores), so normalize both shapes to one metadata field.
+ */
+function imageStyleMetadata(input: Record<string, unknown>) {
+    const nested = isRecord(input.imageStyle) ? input.imageStyle : {};
+    const presetId = firstString(input.stylePresetId, input.presetId, nested.presetId, nested.preset);
+    const genreId = firstString(input.styleGenreId, input.genreId, nested.genreId, nested.genre);
+    const custom = firstString(input.styleCustom, input.customStyle, nested.custom, nested.customDescription);
+    const rawIntensity = firstNumber(input.styleIntensity, input.intensity, nested.intensity, nested.strength);
+    const intensity = rawIntensity == null ? undefined : Math.max(0, Math.min(1, rawIntensity > 1 ? rawIntensity / 100 : rawIntensity));
+    const preserveSubject = firstBoolean(input.preserveSubject, input.stylePreserveSubject, nested.preserveSubject);
+    const dimensions = normalizeImageStyleDimensions(input, nested);
+    const imageStyle = cleanRecord({
+        ...nested,
+        // Store one canonical nested field even when a caller uses the
+        // `styleDimensions` alias or flat group fields.
+        styleDimensions: undefined,
+        presetId,
+        genreId,
+        intensity,
+        preserveSubject,
+        custom,
+        ...(dimensions ? { dimensions } : { dimensions: undefined }),
+    });
+    return Object.keys(imageStyle).length ? { imageStyle } : {};
+}
+
+function normalizeImageStyleDimensions(input: Record<string, unknown>, nested: Record<string, unknown>) {
+    const nestedDimensions = [input.dimensions, input.styleDimensions, nested.dimensions, nested.styleDimensions].filter(isRecord);
+    const dimensions: Record<string, string[]> = {};
+    for (const group of IMAGE_STYLE_DIMENSION_GROUPS) {
+        const prefix = `${group.slice(0, 1).toUpperCase()}${group.slice(1)}`;
+        const values = [...nestedDimensions.map((record) => record[group]), input[group], input[`style${prefix}`], nested[group], nested[`style${prefix}`]].flatMap(stringList);
+        const unique = [...new Set(values)];
+        if (unique.length) dimensions[group] = unique;
+    }
+    return Object.keys(dimensions).length ? dimensions : undefined;
+}
+
+function stringList(value: unknown): string[] {
+    if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+    if (!Array.isArray(value)) return [];
+    return value.flatMap(stringList);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function firstString(...values: unknown[]) {
+    return values.find((value): value is string => typeof value === "string" && Boolean(value.trim()))?.trim();
+}
+
+function firstNumber(...values: unknown[]) {
+    return values.find((value): value is number => typeof value === "number" && Number.isFinite(value));
+}
+
+function firstBoolean(...values: unknown[]) {
+    return values.find((value): value is boolean => typeof value === "boolean");
 }
 
 function positiveNumber(value: unknown, fallback: number) {

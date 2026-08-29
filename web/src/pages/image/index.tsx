@@ -4,6 +4,7 @@ import { App, Button, Checkbox, Drawer, Empty, Image, Input, Modal, Tag, Tooltip
 import { saveAs } from "file-saver";
 
 import { ImageSettingsPanel } from "@/components/image-settings-panel";
+import { ImageStyleSelector } from "@/components/image-style-selector";
 import { ModelPicker } from "@/components/model-picker";
 import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
@@ -19,9 +20,12 @@ import { deleteStoredImages, resolveImageUrl, setImageBlob, storeGeneratedImage,
 import { backend, getAuthEpoch } from "@/services/api/backend";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
+import { useImageStyleStore } from "@/stores/use-image-style-store";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { getWorkbenchLogStore, syncWorkbenchLogs, syncWorkbenchMedia, type WorkbenchLogStore } from "@/services/workbench-cloud-sync";
 import type { ReferenceImage } from "@/types/image";
+import type { ImageStyleSelection, ImageStyleSnapshot } from "@/types/image-style";
+import { compileImagePrompt, sourcePromptFromDisplay } from "@/lib/image-style";
 
 type GeneratedImage = {
     id: string;
@@ -48,6 +52,10 @@ type GenerationLog = {
     createdAt: number;
     title: string;
     prompt: string;
+    /** The provider-facing prompt captured at submission time. */
+    effectivePrompt?: string;
+    /** Immutable style recipe used for this generation. */
+    imageStyle?: ImageStyleSnapshot;
     time: string;
     model: string;
     config: GenerationLogConfig;
@@ -66,6 +74,14 @@ type GenerationLog = {
 
 type GenerationLogConfig = Pick<AiConfig, "model" | "imageModel" | "quality" | "size" | "count">;
 
+type ImageRequestSnapshot = {
+    text: string;
+    effectivePrompt: string;
+    imageStyle: ImageStyleSnapshot;
+    config: AiConfig;
+    references: ReferenceImage[];
+};
+
 type UpdateAiConfig = <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
 
 const RESULT_ACTION_BUTTON_CLASS = "min-w-0 px-1.5 [&_.ant-btn-icon]:shrink-0 [&>span:last-child]:min-w-0 [&>span:last-child]:truncate";
@@ -76,10 +92,19 @@ export default function ImagePage() {
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
     const updateConfig = useConfigStore((state) => state.updateConfig);
+    const imageStyleSelection = useImageStyleStore((state) => state.selection);
+    const setImageStyleSelection = useImageStyleStore((state) => state.setSelection);
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const addAsset = useAssetStore((state) => state.addAsset);
+    // `prompt` is the text shown in the editor.  The style compiler appends a
+    // provider-facing direction block to it, so keep the user's source text
+    // separately in a ref.  This lets changing a recipe rebuild the visible
+    // value without stacking the previous recipe over and over.
     const [prompt, setPrompt] = useState("");
+    const sourcePromptRef = useRef("");
+    const promptDisplayRef = useRef("");
     const [references, setReferences] = useState<ReferenceImage[]>([]);
     const [results, setResults] = useState<GenerationResult[]>([]);
     const [logs, setLogs] = useState<GenerationLog[]>([]);
@@ -106,8 +131,43 @@ export default function ImagePage() {
     const resumedLogIdsRef = useRef(new Set<string>());
 
     const model = effectiveConfig.imageModel || effectiveConfig.model;
-    const canGenerate = Boolean(prompt.trim());
+    const canGenerate = Boolean(sourcePromptRef.current.trim());
     const generationCount = Math.max(1, Math.min(10, Number(config.count) || 1));
+
+    const applyPromptSource = (rawPrompt: string, selection: ImageStyleSelection = imageStyleSelection, displayOverride?: string) => {
+        const compiled = compileImagePrompt(rawPrompt, selection);
+        sourcePromptRef.current = compiled.sourcePrompt;
+        const display = displayOverride ?? compiled.effectivePrompt;
+        promptDisplayRef.current = display;
+        setPrompt(display);
+        return compiled;
+    };
+
+    const handlePromptInput = (value: string) => {
+        const source = sourcePromptFromDisplay(value, sourcePromptRef.current, promptDisplayRef.current);
+        sourcePromptRef.current = source;
+        promptDisplayRef.current = value;
+        setPrompt(value);
+    };
+
+    const handleImageStyleChange = (selection: ImageStyleSelection) => {
+        // The ref is updated synchronously by handlePromptInput, while the
+        // state update below is asynchronous.  Use it as the source of truth
+        // so a quick style switch cannot compile the previous render's text.
+        const source = sourcePromptRef.current || sourcePromptFromDisplay(promptDisplayRef.current, sourcePromptRef.current, promptDisplayRef.current);
+        setImageStyleSelection(selection);
+        applyPromptSource(source, selection);
+    };
+
+    const syncPromptWithStyle = () => {
+        const compiled = compileImagePrompt(sourcePromptRef.current, imageStyleSelection);
+        sourcePromptRef.current = compiled.sourcePrompt;
+        // Avoid moving the caret when the editor is already showing the
+        // current compiled value (e.g. a textarea blur before a dropdown click).
+        if (compiled.effectivePrompt === promptDisplayRef.current) return;
+        promptDisplayRef.current = compiled.effectivePrompt;
+        setPrompt(compiled.effectivePrompt);
+    };
 
     useEffect(() => {
         if (!running || !startedAt) return;
@@ -118,6 +178,8 @@ export default function ImagePage() {
     useEffect(() => {
         activeUserIdRef.current = currentUserId;
         logSyncQueueRef.current = Promise.resolve();
+        sourcePromptRef.current = "";
+        promptDisplayRef.current = "";
         setPrompt("");
         setReferences([]);
         setResults([]);
@@ -180,7 +242,7 @@ export default function ImagePage() {
             message.error("请先登录");
             return;
         }
-        const text = prompt.trim();
+        const text = sourcePromptRef.current.trim();
         if (!text) {
             message.error("请输入生图提示词");
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", error: "请输入生图提示词" });
@@ -210,26 +272,34 @@ export default function ImagePage() {
         const taskIds = Array.from({ length: generationCount }, () => "");
         // 先把任务状态同步到服务器；最终结果会复用这个 ID 更新，避免产生重复记录。
         const pendingLog = buildLog({
-                id: logId,
-                prompt: text,
-                model,
-                config: { ...snapshot.config, count: String(generationCount) },
-                references: snapshot.references,
-                durationMs: 0,
-                successCount: 0,
-                failCount: 0,
-                status: "生成中",
-                images: [],
-            });
+            id: logId,
+            prompt: text,
+            effectivePrompt: snapshot.effectivePrompt,
+            imageStyle: snapshot.imageStyle,
+            model,
+            config: { ...snapshot.config, count: String(generationCount) },
+            references: snapshot.references,
+            durationMs: 0,
+            successCount: 0,
+            failCount: 0,
+            status: "生成中",
+            images: [],
+        });
         // 不让云端日志同步阻塞真正的生图提交；后续任务 ID 保存仍按顺序串行，避免旧日志覆盖新 ID。
         let taskLogSave = saveLog(pendingLog);
 
         const tasks = Array.from({ length: generationCount }, (_, index) =>
-            runGenerationSlot(index, snapshot, isCurrentGeneration, (taskId) => {
-                taskIds[index] = taskId;
-                const nextTaskIds = [...taskIds];
-                taskLogSave = taskLogSave.then(() => saveLog({ ...pendingLog, taskIds: nextTaskIds }));
-            }, { surface: "workbench", kind: "image", logId, slot: index }),
+            runGenerationSlot(
+                index,
+                snapshot,
+                isCurrentGeneration,
+                (taskId) => {
+                    taskIds[index] = taskId;
+                    const nextTaskIds = [...taskIds];
+                    taskLogSave = taskLogSave.then(() => saveLog({ ...pendingLog, taskIds: nextTaskIds }));
+                },
+                { surface: "workbench", kind: "image", logId, slot: index },
+            ),
         );
 
         const result = await Promise.allSettled(tasks);
@@ -237,7 +307,7 @@ export default function ImagePage() {
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", error: "账号已切换，生成结果已放弃" });
             return;
         }
-        const successImages: GeneratedImage[] = result.flatMap((item) => item.status === "fulfilled" ? [item.value] : []);
+        const successImages: GeneratedImage[] = result.flatMap((item) => (item.status === "fulfilled" ? [item.value] : []));
         const successCount = successImages.length;
         const failCount = generationCount - successCount;
         const failed = result.find((item): item is PromiseRejectedResult => item.status === "rejected");
@@ -252,6 +322,8 @@ export default function ImagePage() {
                 ...buildLog({
                     id: logId,
                     prompt: text,
+                    effectivePrompt: snapshot.effectivePrompt,
+                    imageStyle: snapshot.imageStyle,
                     model,
                     config: { ...snapshot.config, count: String(generationCount) },
                     references: snapshot.references,
@@ -276,7 +348,13 @@ export default function ImagePage() {
         if (!imageCommand || imageCommand.nonce === processedCommandRef.current) return;
         processedCommandRef.current = imageCommand.nonce;
         clearImageCommand();
-        if (typeof imageCommand.prompt === "string") setPrompt(imageCommand.prompt);
+        const commandStyle = imageCommand.imageStyle;
+        if (commandStyle !== undefined) setImageStyleSelection(commandStyle);
+        if (typeof imageCommand.prompt === "string") {
+            applyPromptSource(imageCommand.prompt, commandStyle ?? imageStyleSelection);
+        } else if (commandStyle !== undefined) {
+            applyPromptSource(sourcePromptRef.current, commandStyle);
+        }
         if (imageCommand.run && running) {
             if (imageCommand.taskId) updateAgentTask(imageCommand.taskId, { status: "failed", error: "生图工作台已有任务正在运行" });
             return;
@@ -285,7 +363,7 @@ export default function ImagePage() {
             agentTaskIdRef.current = imageCommand.taskId;
             setAutoRunToken((value) => value + 1);
         }
-    }, [imageCommand, clearImageCommand, running, updateAgentTask]);
+    }, [imageCommand, clearImageCommand, imageStyleSelection, running, setImageStyleSelection, updateAgentTask]);
 
     useEffect(() => {
         if (!autoRunToken) return;
@@ -321,14 +399,20 @@ export default function ImagePage() {
             tags: [],
             source: "生图工作台",
             data: { dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType },
-            metadata: { source: "image-page", prompt },
+            metadata: {
+                source: "image-page",
+                // Keep reusable text assets source-only; the visible prompt
+                // may contain a derived cinematography block.
+                prompt: sourcePromptRef.current,
+                ...(promptDisplayRef.current !== sourcePromptRef.current ? { effectivePrompt: promptDisplayRef.current } : {}),
+            },
         });
         message.success("已加入我的资产");
     };
 
     const insertPickedAsset = async (payload: InsertAssetPayload) => {
         if (payload.kind === "text") {
-            setPrompt(payload.content);
+            applyPromptSource(payload.content);
         } else if (payload.kind === "image") {
             const stored = await uploadImage(payload.dataUrl);
             setReferences((value) => [...value, { id: nanoid(), name: payload.title, type: stored.mimeType, dataUrl: stored.url, storageKey: stored.storageKey }]);
@@ -339,6 +423,8 @@ export default function ImagePage() {
     };
 
     const createSession = () => {
+        sourcePromptRef.current = "";
+        promptDisplayRef.current = "";
         setPrompt("");
         setReferences([]);
         setResults([]);
@@ -404,7 +490,9 @@ export default function ImagePage() {
     const previewGenerationLog = async (log: GenerationLog) => {
         setPreviewLog(log);
         setLogsOpen(false);
-        setPrompt(log.prompt);
+        const selection = styleSelectionFromSnapshot(log.imageStyle);
+        setImageStyleSelection(selection);
+        applyPromptSource(log.prompt, selection, log.effectivePrompt || undefined);
         setReferences(log.references || []);
         if (log.config.imageModel || log.model) updateConfig("imageModel", log.config.imageModel || log.model);
         if (log.config.quality) updateConfig("quality", log.config.quality);
@@ -414,7 +502,7 @@ export default function ImagePage() {
     };
 
     const buildRequestSnapshot = () => {
-        const text = prompt.trim();
+        const text = sourcePromptRef.current.trim();
         if (!text) {
             message.error("请输入生图提示词");
             return null;
@@ -424,28 +512,45 @@ export default function ImagePage() {
             openConfigDialog(true);
             return null;
         }
-        return { text, config: { ...effectiveConfig, model, count: "1" }, references: [...references] };
+        const compiled = compileImagePrompt(text, imageStyleSelection);
+        return { text, effectivePrompt: compiled.effectivePrompt, imageStyle: compiled.styleSnapshot, config: { ...effectiveConfig, model, count: "1" }, references: [...references] };
     };
 
-    const runGenerationSlot = async (index: number, snapshot: { text: string; config: AiConfig; references: ReferenceImage[] }, isCurrentGeneration: () => boolean, onTaskSubmitted?: (taskId: string) => void, clientContext?: Record<string, string | number | boolean>) => {
+    const runGenerationSlot = async (index: number, snapshot: ImageRequestSnapshot, isCurrentGeneration: () => boolean, onTaskSubmitted?: (taskId: string) => void, clientContext?: Record<string, string | number | boolean>) => {
         const itemStartedAt = performance.now();
         try {
             setResults((value) => updateResultAt(value, index, { taskPhase: "generating" }));
+            const styleContext = {
+                ...(snapshot.imageStyle.presetId ? { stylePresetId: snapshot.imageStyle.presetId } : {}),
+                ...(snapshot.imageStyle.genreId ? { styleGenreId: snapshot.imageStyle.genreId } : {}),
+                styleIntensity: snapshot.imageStyle.intensity,
+                stylePreserveSubject: snapshot.imageStyle.preserveSubject,
+                styleVersion: snapshot.imageStyle.version,
+                ...styleDimensionContextFromSnapshot(snapshot.imageStyle),
+            } satisfies Record<string, string | number | boolean>;
             const taskOptions = {
                 onTaskSubmitted,
-                clientContext,
+                clientContext: { ...styleContext, ...(clientContext || {}) },
                 onTaskUpdated: (task: { phase: ServerImageTaskPhase }) => {
                     if (isCurrentGeneration()) setResults((value) => updateResultAt(value, index, { taskPhase: task.phase }));
                 },
             };
-            const result = snapshot.references.length
-                ? await requestEdit(snapshot.config, snapshot.text, snapshot.references, undefined, taskOptions)
-                : await requestGeneration(snapshot.config, snapshot.text, taskOptions);
+            const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.effectivePrompt, snapshot.references, undefined, taskOptions) : await requestGeneration(snapshot.config, snapshot.effectivePrompt, taskOptions);
             const image = result[0];
             if (!image) throw new Error("接口没有返回图片");
             const stored = await storeGeneratedImage(image);
             if (!isCurrentGeneration()) throw new Error("账号已切换");
-            const nextImage = { id: image.id, dataUrl: stored.url, storageKey: stored.storageKey, durationMs: performance.now() - itemStartedAt, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType, serverTaskId: image.serverTaskId };
+            const nextImage = {
+                id: image.id,
+                dataUrl: stored.url,
+                storageKey: stored.storageKey,
+                durationMs: performance.now() - itemStartedAt,
+                width: stored.width,
+                height: stored.height,
+                bytes: stored.bytes,
+                mimeType: stored.mimeType,
+                serverTaskId: image.serverTaskId,
+            };
             setResults((value) => updateResultAt(value, index, { status: "success", image: nextImage }));
             acknowledgeImageTaskAfterRender(image.serverTaskId, { clientElapsedMs: performance.now() - itemStartedAt });
             return nextImage;
@@ -472,6 +577,9 @@ export default function ImagePage() {
                 imageModel: log.model || log.config.imageModel,
                 count: "1",
             };
+            const resumed = compileImagePrompt(log.prompt, styleSelectionFromSnapshot(log.imageStyle));
+            const resumeStyle = log.imageStyle || resumed.styleSnapshot;
+            const resumePrompt = log.effectivePrompt || resumed.effectivePrompt;
             setRunning(true);
             setStartedAt(performance.now());
             setResults(taskIds.map(() => ({ id: nanoid(), status: "pending" as const, taskPhase: "queued" as const })));
@@ -479,13 +587,12 @@ export default function ImagePage() {
                 taskIds.map(async (taskId, index) => {
                     const taskOptions = {
                         existingTaskId: taskId,
+                        clientContext: styleContextFromSnapshot(resumeStyle),
                         onTaskUpdated: (task: { phase: ServerImageTaskPhase }) => {
                             if (isCurrentGeneration()) setResults((value) => updateResultAt(value, index, { taskPhase: task.phase }));
                         },
                     };
-                    const result = log.references.length
-                        ? await requestEdit(resumeConfig, log.prompt, log.references, undefined, taskOptions)
-                        : await requestGeneration(resumeConfig, log.prompt, taskOptions);
+                    const result = log.references.length ? await requestEdit(resumeConfig, resumePrompt, log.references, undefined, taskOptions) : await requestGeneration(resumeConfig, resumePrompt, taskOptions);
                     const image = result[0];
                     if (!image) throw new Error("后台任务没有返回图片");
                     const stored = await storeGeneratedImage(image);
@@ -501,27 +608,29 @@ export default function ImagePage() {
                         serverTaskId: image.serverTaskId || taskId,
                     } satisfies GeneratedImage;
                 }),
-            ).then(async (settled) => {
-                if (!isCurrentGeneration()) return;
-                const images: GeneratedImage[] = settled.flatMap((item) => item.status === "fulfilled" ? [item.value] : []);
-                const failCount = Math.max(0, Number(log.config.count) - images.length);
-                await saveLog({
-                    ...log,
-                    durationMs: Math.max(0, Date.now() - log.createdAt),
-                    successCount: images.length,
-                    failCount,
-                    imageCount: Number(log.config.count) || taskIds.length,
-                    status: images.length ? "成功" : "失败",
-                    images,
-                    thumbnails: images.map((image) => image.dataUrl),
+            )
+                .then(async (settled) => {
+                    if (!isCurrentGeneration()) return;
+                    const images: GeneratedImage[] = settled.flatMap((item) => (item.status === "fulfilled" ? [item.value] : []));
+                    const failCount = Math.max(0, Number(log.config.count) - images.length);
+                    await saveLog({
+                        ...log,
+                        durationMs: Math.max(0, Date.now() - log.createdAt),
+                        successCount: images.length,
+                        failCount,
+                        imageCount: Number(log.config.count) || taskIds.length,
+                        status: images.length ? "成功" : "失败",
+                        images,
+                        thumbnails: images.map((image) => image.dataUrl),
+                    });
+                    setResults(images.map((image) => ({ id: image.id, status: "success" as const, image })));
+                    images.forEach((image) => acknowledgeImageTaskAfterRender(image.serverTaskId, { clientElapsedMs: Math.max(0, Date.now() - log.createdAt) }));
+                    images.length ? message.success("后台图片任务已完成") : message.error("后台图片任务失败");
+                })
+                .finally(() => {
+                    resumedLogIdsRef.current.delete(log.id);
+                    if (isCurrentGeneration()) setRunning(false);
                 });
-                setResults(images.map((image) => ({ id: image.id, status: "success" as const, image })));
-                images.forEach((image) => acknowledgeImageTaskAfterRender(image.serverTaskId, { clientElapsedMs: Math.max(0, Date.now() - log.createdAt) }));
-                images.length ? message.success("后台图片任务已完成") : message.error("后台图片任务失败");
-            }).finally(() => {
-                resumedLogIdsRef.current.delete(log.id);
-                if (isCurrentGeneration()) setRunning(false);
-            });
         });
     }, [currentUserId, effectiveConfig, logs, message, running]);
 
@@ -538,11 +647,12 @@ export default function ImagePage() {
         try {
             const image = await runGenerationSlot(index, snapshot, isCurrentGeneration, undefined, { surface: "workbench", kind: "image", slot: index });
             if (!isCurrentGeneration()) return;
-            if (!isCurrentGeneration()) return;
             const logImage = image;
             saveLog(
                 buildLog({
                     prompt: snapshot.text,
+                    effectivePrompt: snapshot.effectivePrompt,
+                    imageStyle: snapshot.imageStyle,
                     model,
                     config: { ...snapshot.config, count: "1" },
                     references: snapshot.references,
@@ -605,7 +715,11 @@ export default function ImagePage() {
                                         </Button>
                                     </div>
                                 </div>
-                                <Input.TextArea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={9} placeholder="描述画面主体、风格、构图、光线和用途" />
+                                <Input.TextArea value={prompt} onChange={(event) => handlePromptInput(event.target.value)} onBlur={syncPromptWithStyle} rows={9} placeholder="描述画面主体、风格、构图、光线和用途" />
+                            </div>
+
+                            <div className="rounded-lg border border-stone-200 bg-stone-50/70 p-3 dark:border-stone-800 dark:bg-stone-900/50">
+                                <ImageStyleSelector value={imageStyleSelection} onChange={handleImageStyleChange} theme={theme} compact />
                             </div>
 
                             <div className="min-w-0">
@@ -723,7 +837,7 @@ export default function ImagePage() {
                     <GenerationSettings config={effectiveConfig} model={model} updateConfig={updateConfig} openConfigDialog={openConfigDialog} />
                 </div>
             </Drawer>
-            <PromptSelectDialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen} onSelect={setPrompt} />
+            <PromptSelectDialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen} onSelect={(value) => applyPromptSource(value)} />
             <AssetPickerModal open={assetPickerOpen} defaultTab="my-assets" onInsert={(payload) => void insertPickedAsset(payload)} onClose={() => setAssetPickerOpen(false)} />
             <Modal title="删除生成记录" open={deleteConfirmOpen} onCancel={() => setDeleteConfirmOpen(false)} onOk={deleteSelectedLogs} okText="删除" okButtonProps={{ danger: true }} cancelText="取消">
                 确定删除选中的 {selectedLogIds.length} 条生成记录吗？
@@ -993,6 +1107,8 @@ async function normalizeLog(log: Partial<GenerationLog>): Promise<GenerationLog>
         createdAt: log.createdAt || Date.now(),
         title: log.title || log.model || "未命名",
         prompt: log.prompt || log.title || "",
+        effectivePrompt: typeof log.effectivePrompt === "string" ? log.effectivePrompt : undefined,
+        imageStyle: log.imageStyle,
         time: log.time || new Date().toLocaleString("zh-CN", { hour12: false }),
         model: log.model || config.imageModel || "",
         config,
@@ -1029,6 +1145,40 @@ function normalizeLogConfig(log: Partial<GenerationLog>): GenerationLogConfig {
     };
 }
 
+function styleSelectionFromSnapshot(snapshot?: ImageStyleSnapshot) {
+    return {
+        presetId: snapshot?.presetId,
+        genreId: snapshot?.genreId,
+        intensity: snapshot?.intensity ?? 0,
+        preserveSubject: snapshot?.preserveSubject ?? true,
+        ...(snapshot?.custom ? { custom: snapshot.custom } : {}),
+        ...(snapshot?.dimensions ? { dimensions: snapshot.dimensions } : {}),
+    };
+}
+
+function styleContextFromSnapshot(snapshot: ImageStyleSnapshot) {
+    return {
+        ...(snapshot.presetId ? { stylePresetId: snapshot.presetId } : {}),
+        ...(snapshot.genreId ? { styleGenreId: snapshot.genreId } : {}),
+        styleIntensity: snapshot.intensity,
+        stylePreserveSubject: snapshot.preserveSubject,
+        styleVersion: snapshot.version,
+        ...styleDimensionContextFromSnapshot(snapshot),
+    } satisfies Record<string, string | number | boolean>;
+}
+
+function styleDimensionContextFromSnapshot(snapshot: ImageStyleSnapshot) {
+    const dimensions = snapshot.dimensions;
+    if (!dimensions || typeof dimensions !== "object") return {};
+    const entries = Object.entries(dimensions).filter(([, values]) => Array.isArray(values) && values.length);
+    if (!entries.length) return {};
+    const flat = Object.fromEntries(entries.map(([group, values]) => [`style${group.charAt(0).toUpperCase()}${group.slice(1)}`, values.join(",")]));
+    return {
+        styleDimensions: JSON.stringify(Object.fromEntries(entries)),
+        ...flat,
+    } satisfies Record<string, string>;
+}
+
 function moveListItem<T>(items: T[], index: number, offset: number) {
     const targetIndex = index + offset;
     if (targetIndex < 0 || targetIndex >= items.length) return items;
@@ -1049,6 +1199,8 @@ function ReferenceOrderButtons({ index, total, onMove }: { index: number; total:
 
 function buildLog({
     prompt,
+    effectivePrompt,
+    imageStyle,
     model,
     config,
     references,
@@ -1061,6 +1213,8 @@ function buildLog({
 }: {
     id?: string;
     prompt: string;
+    effectivePrompt?: string;
+    imageStyle?: ImageStyleSnapshot;
     model: string;
     config: GenerationLogConfig;
     references: ReferenceImage[];
@@ -1082,6 +1236,8 @@ function buildLog({
         createdAt: Date.now(),
         title: prompt.slice(0, 12) || "未命名",
         prompt,
+        ...(effectivePrompt ? { effectivePrompt } : {}),
+        ...(imageStyle ? { imageStyle } : {}),
         time: new Date().toLocaleString("zh-CN", { hour12: false }),
         model,
         config: logConfig,

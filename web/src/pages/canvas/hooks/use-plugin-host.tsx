@@ -8,9 +8,10 @@ import { buildNodeContext } from "@/lib/canvas/plugin-node-context";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { ensurePluginsLoaded } from "@/lib/canvas/plugin-loader";
 import { canvasThemes } from "@/lib/canvas-theme";
+import { compileImagePrompt } from "@/lib/image-style";
 import type { CanvasNodeToolbarItem, CanvasPluginAi, CanvasPluginHost } from "@/types/canvas-plugin";
 import type { ReferenceImage } from "@/types/image";
-import type { CanvasAgentOp } from "@/lib/canvas/canvas-agent-ops";
+import { mergeCanvasNodeMetadata, type CanvasAgentOp } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
 
 type CanvasTheme = (typeof canvasThemes)[keyof typeof canvasThemes];
@@ -51,7 +52,8 @@ export function usePluginHost(params: PluginHostParams) {
                 const config = { ...buildGenerationConfig(effectiveConfig, undefined, "image"), count: String(options?.count || 1), ...(options?.model ? { model: options.model } : {}), ...(options?.size ? { size: options.size } : {}) };
                 ensureReady(config);
                 const references = toReferences(options?.references);
-                const items = references.length ? await requestEdit(config, prompt, references, undefined, { signal: options?.signal }) : await requestGeneration(config, prompt, { signal: options?.signal });
+                const effectivePrompt = compileImagePrompt(prompt, options?.imageStyle).effectivePrompt;
+                const items = references.length ? await requestEdit(config, effectivePrompt, references, undefined, { signal: options?.signal }) : await requestGeneration(config, effectivePrompt, { signal: options?.signal });
                 return { images: items.map((item) => item.dataUrl) };
             },
             generateVideo: async (prompt, options) => {
@@ -94,7 +96,7 @@ export function usePluginHost(params: PluginHostParams) {
                     .map((conn) => nodesRef.current.find((node) => node.id === conn.toNodeId))
                     .filter((node): node is CanvasNodeData => Boolean(node)),
             updateNode: (nodeId, patch) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, ...patch } : node))),
-            updateMetadata: (nodeId, patch) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...patch } } : node))),
+            updateMetadata: (nodeId, patch) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: mergeCanvasNodeMetadata(node.metadata, patch) } : node))),
             applyOps: (ops) => applyAgentOps(ops),
             ai: pluginAi,
             openPanel: (nodeId) => setDialogNodeId(nodeId),

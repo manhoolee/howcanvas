@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ImageStyleSelection } from "@/types/image-style";
 
 // Agent 面板通过该 store 向生图/视频工作台派发命令：设置提示词、并可选自动点击生成。
 // 参数（模型/质量/尺寸/张数等）由 Agent 面板直接写入 use-config-store，工作台页面从 config 读取；
@@ -8,6 +9,7 @@ export type WorkbenchCommand = {
     nonce: number;
     taskId?: string;
     prompt?: string;
+    imageStyle?: ImageStyleSelection;
     run: boolean;
 };
 
@@ -16,6 +18,7 @@ export type WorkbenchGenerationTask = {
     kind: "image" | "video";
     status: "queued" | "running" | "succeeded" | "failed";
     prompt?: string;
+    imageStyle?: ImageStyleSelection;
     createdAt: string;
     updatedAt: string;
     successCount?: number;
@@ -43,7 +46,7 @@ export const useWorkbenchAgentStore = create<WorkbenchAgentStore>((set) => ({
     tasks: [],
     dispatchImage: (command) => {
         const commandNonce = nextNonce();
-        const task = command.run ? createTask("image", commandNonce, command.prompt) : undefined;
+        const task = command.run ? createTask("image", commandNonce, command.prompt, command.imageStyle) : undefined;
         set((state) => ({ imageCommand: { ...command, nonce: commandNonce, taskId: task?.id }, tasks: task ? [task, ...state.tasks].slice(0, 30) : state.tasks }));
         return task?.id;
     },
@@ -58,7 +61,7 @@ export const useWorkbenchAgentStore = create<WorkbenchAgentStore>((set) => ({
     clearVideoCommand: () => set({ videoCommand: null }),
 }));
 
-function createTask(kind: "image" | "video", commandNonce: number, prompt?: string): WorkbenchGenerationTask {
+function createTask(kind: "image" | "video", commandNonce: number, prompt?: string, imageStyle?: ImageStyleSelection): WorkbenchGenerationTask {
     const now = new Date().toISOString();
-    return { id: `${kind}-${commandNonce}`, kind, status: "queued", prompt, createdAt: now, updatedAt: now };
+    return { id: `${kind}-${commandNonce}`, kind, status: "queued", prompt, ...(imageStyle ? { imageStyle } : {}), createdAt: now, updatedAt: now };
 }

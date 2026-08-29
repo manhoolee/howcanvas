@@ -4,6 +4,7 @@ import { useAgentStore } from "@/stores/use-agent-store";
 import { applyCanvasAgentOps, type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import type { CanvasConnection, CanvasNodeData, ContextMenuState, ViewportTransform } from "@/types/canvas";
+import type { ImageStyleDimensionGroup, ImageStyleDimensionSelection, ImageStyleSelection } from "@/types/image-style";
 
 type GenerateNodeRef = MutableRefObject<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => Promise<void>) | null>;
 
@@ -44,10 +45,11 @@ export function useAgentBridge(params: AgentBridgeParams) {
             const safeOps = Array.isArray(ops) ? ops.filter((op) => op?.type) : [];
             const before = { projectId, title: projectTitle, nodes: nodesRef.current, connections: connectionsRef.current, selectedNodeIds: Array.from(selectedNodeIdsRef.current), viewport: viewportRef.current };
             const generationOps = safeOps.filter((op): op is Extract<CanvasAgentOp, { type: "run_generation" }> => op.type === "run_generation" && Boolean(op.nodeId));
-            const next = applyCanvasAgentOps(
-                before,
-                safeOps.filter((op) => op.type !== "run_generation"),
-            );
+            const styleOps: CanvasAgentOp[] = generationOps.flatMap((op) => {
+                const imageStyle = imageStyleFromGenerationOp(op);
+                return imageStyle ? [{ type: "update_node" as const, id: op.nodeId, metadata: { imageStyle, effectivePrompt: undefined, imageStyleSnapshot: undefined } }] : [];
+            });
+            const next = applyCanvasAgentOps(before, [...safeOps.filter((op) => op.type !== "run_generation"), ...styleOps]);
             nodesRef.current = next.nodes;
             connectionsRef.current = next.connections;
             selectedNodeIdsRef.current = new Set(next.selectedNodeIds);
@@ -94,4 +96,103 @@ export function useAgentBridge(params: AgentBridgeParams) {
     }, [agentSnapshot, applyAgentOps, agentUndoSnapshot, setAgentCanvasContext, undoAgentOps]);
 
     return { applyAgentOps };
+}
+
+function imageStyleFromGenerationOp(op: Extract<CanvasAgentOp, { type: "run_generation" }>): ImageStyleSelection | undefined {
+    const raw = op as unknown as Record<string, unknown>;
+    const hasOwn = (key: string) => Object.prototype.hasOwnProperty.call(raw, key);
+    const nested = raw.imageStyle && typeof raw.imageStyle === "object" && !Array.isArray(raw.imageStyle) ? (raw.imageStyle as Record<string, unknown>) : {};
+    const pickString = (...values: unknown[]) => values.find((value): value is string => typeof value === "string" && Boolean(value.trim()))?.trim();
+    const pickNumber = (...values: unknown[]) => values.find((value): value is number => typeof value === "number" && Number.isFinite(value));
+    const pickBoolean = (...values: unknown[]) => values.find((value): value is boolean => typeof value === "boolean");
+    const presetId = pickString(raw.stylePresetId, raw.presetId, raw.preset, nested.presetId, nested.preset);
+    const genreId = pickString(raw.styleGenreId, raw.genreId, raw.genre, nested.genreId, nested.genre);
+    const custom = pickString(raw.styleCustom, raw.customStyle, raw.custom, raw.customDescription, nested.custom, nested.customStyle, nested.customDescription);
+    const rawIntensity = pickNumber(raw.styleIntensity, raw.intensity, raw.strength, nested.intensity, nested.strength);
+    const intensity = rawIntensity == null ? undefined : Math.max(0, Math.min(1, rawIntensity > 1 ? rawIntensity / 100 : rawIntensity));
+    const preserveSubject = pickBoolean(raw.preserveSubject, raw.stylePreserveSubject, nested.preserveSubject);
+    const { dimensions, hasDimensionField } = normalizeImageStyleDimensions(raw, nested);
+    const hasNested = hasOwn("imageStyle") && raw.imageStyle !== undefined;
+    const hasFlat = [
+        "stylePresetId",
+        "styleGenreId",
+        "styleIntensity",
+        "preserveSubject",
+        "styleCustom",
+        "stylePreserveSubject",
+        "presetId",
+        "preset",
+        "genreId",
+        "genre",
+        "intensity",
+        "strength",
+        "custom",
+        "customStyle",
+        "customDescription",
+        "dimensions",
+        "styleDimensions",
+        ...IMAGE_STYLE_DIMENSION_GROUPS,
+        ...IMAGE_STYLE_DIMENSION_GROUPS.map(styleDimensionAlias),
+    ].some(hasOwn);
+    if (!hasNested && !hasFlat) return undefined;
+    return {
+        ...nested,
+        ...(presetId ? { presetId } : {}),
+        ...(genreId ? { genreId } : {}),
+        ...(intensity != null ? { intensity } : {}),
+        ...(preserveSubject !== undefined ? { preserveSubject } : {}),
+        ...(custom ? { custom } : {}),
+        ...(hasDimensionField ? { dimensions } : {}),
+    };
+}
+
+const IMAGE_STYLE_DIMENSION_GROUPS: readonly ImageStyleDimensionGroup[] = ["composition", "colorGrading", "lighting", "lens", "cameraMovement", "texture", "atmosphere", "editingRhythm"];
+
+function styleDimensionAlias(group: ImageStyleDimensionGroup) {
+    return `style${group.charAt(0).toUpperCase()}${group.slice(1)}`;
+}
+
+function asRecord(value: unknown) {
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+function stringList(value: unknown) {
+    if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim());
+}
+
+function normalizeImageStyleDimensions(...sources: Record<string, unknown>[]) {
+    const dimensions: Partial<Record<ImageStyleDimensionGroup, readonly string[]>> = {};
+    let hasDimensionField = false;
+    const valuesByGroup = new Map<ImageStyleDimensionGroup, string[]>();
+    const collect = (value: unknown, allowContainer = false) => {
+        const record = asRecord(value);
+        if (!record) return;
+        if (allowContainer) {
+            for (const key of ["dimensions", "styleDimensions"]) {
+                if (Object.prototype.hasOwnProperty.call(record, key)) {
+                    hasDimensionField = true;
+                    collect(record[key]);
+                }
+            }
+        }
+        for (const group of IMAGE_STYLE_DIMENSION_GROUPS) {
+            const alias = styleDimensionAlias(group);
+            for (const key of [group, alias]) {
+                if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+                hasDimensionField = true;
+                const values = valuesByGroup.get(group) || [];
+                values.push(...stringList(record[key]));
+                valuesByGroup.set(group, values);
+            }
+        }
+    };
+    sources.forEach((source) => collect(source, true));
+    IMAGE_STYLE_DIMENSION_GROUPS.forEach((group) => {
+        const values = valuesByGroup.get(group) || [];
+        const deduped = Array.from(new Set(values));
+        if (deduped.length) dimensions[group] = deduped;
+    });
+    return { dimensions: dimensions as ImageStyleDimensionSelection, hasDimensionField };
 }
