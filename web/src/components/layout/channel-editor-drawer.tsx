@@ -10,6 +10,7 @@ const apiFormatOptions: Array<{ label: string; value: ApiCallFormat }> = [
     { label: "OpenAI", value: "openai" },
     { label: "Gemini", value: "gemini" },
     { label: "Grok Video V2", value: "grok-video-v2" },
+    { label: "MiniMax H3", value: "minimax-h3" },
 ];
 
 const capabilityOptions: Array<{ label: string; value: ModelCapability }> = [

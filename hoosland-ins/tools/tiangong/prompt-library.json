@@ -1,0 +1,3638 @@
+{
+  "version": 12,
+  "description": "天工造境结构化提示词库。可在此独立维护词条、预设、世界设定、输出结构与默认约束。v12 固化连续实测原则：以中国巨构宫城的尺度压迫产生神性，以极简元素、留白、清洁空气与单向风云形成仙气；前景锚点按场景功能选择，古松不再默认重复。",
+  "taxonomy": {
+    "source": "天宫_图片文字整理.md",
+    "sceneCount": 64,
+    "fields": [
+      {
+        "id": "world_type",
+        "label": "世界类型",
+        "selection": "single",
+        "allowCustom": false,
+        "groups": [
+          {
+            "label": "空间体系",
+            "options": [
+              {
+                "value": "九重天宫",
+                "count": 0,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "悬山仙境",
+                "count": 0,
+                "exampleScene": "竹海悬寺"
+              },
+              {
+                "value": "云海水境",
+                "count": 0,
+                "exampleScene": "云上镜湖"
+              },
+              {
+                "value": "天界奇观",
+                "count": 0,
+                "exampleScene": "太虚古琴"
+              },
+              {
+                "value": "巨构天界",
+                "count": 10,
+                "exampleScene": "十组实测：巨柱云台道"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "time_weather",
+        "label": "时间与天气",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "时间",
+            "options": [
+              {
+                "value": "晨光",
+                "count": 23,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "清晨",
+                "count": 10,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "日出",
+                "count": 7,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "黎明",
+                "count": 6,
+                "exampleScene": "星河观象台"
+              },
+              {
+                "value": "夕阳",
+                "count": 5,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "拂晓",
+                "count": 2,
+                "exampleScene": "星雨落琼城"
+              },
+              {
+                "value": "满月",
+                "count": 2,
+                "exampleScene": "07月海云帆丨章节：仙缘引路"
+              },
+              {
+                "value": "黄昏",
+                "count": 2,
+                "exampleScene": "10宝鼎承霞"
+              },
+              {
+                "value": "傍晚",
+                "count": 1,
+                "exampleScene": "蓬莱云港"
+              },
+              {
+                "value": "夕金",
+                "count": 1,
+                "exampleScene": "16 天锚镇潮"
+              },
+              {
+                "value": "月夜",
+                "count": 1,
+                "exampleScene": "12天灯照海"
+              }
+            ]
+          },
+          {
+            "label": "天气",
+            "options": [
+              {
+                "value": "薄雾",
+                "count": 14,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "云雾",
+                "count": 12,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "风暴后",
+                "count": 2,
+                "exampleScene": "云海蜃宫"
+              },
+              {
+                "value": "低云",
+                "count": 1,
+                "exampleScene": "雨幕天城"
+              },
+              {
+                "value": "夏雨初晴",
+                "count": 1,
+                "exampleScene": "青莲天池"
+              },
+              {
+                "value": "暴雨",
+                "count": 1,
+                "exampleScene": "雨幕天城"
+              },
+              {
+                "value": "雨后初晴",
+                "count": 1,
+                "exampleScene": "|章节：天器入城"
+              },
+              {
+                "value": "风雪",
+                "count": 1,
+                "exampleScene": "昆仑雪阙"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "season_dynamic",
+        "label": "季节与自然动态",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "季节氛围",
+            "options": [
+              {
+                "value": "春雾落花",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "夏雨云瀑",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "秋风金叶",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "冬雪冰瀑",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          },
+          {
+            "label": "自然动态",
+            "options": [
+              {
+                "value": "风向统一",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "衣带受风",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "云潮流向",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "瀑流落点",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "鹤群远飞",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "environment",
+        "label": "核心环境",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "天域",
+            "options": [
+              {
+                "value": "云海",
+                "count": 42,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "天空",
+                "count": 24,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "云谷",
+                "count": 5,
+                "exampleScene": "青鸾横云"
+              },
+              {
+                "value": "高空",
+                "count": 5,
+                "exampleScene": "桃源仙渡"
+              },
+              {
+                "value": "云港",
+                "count": 3,
+                "exampleScene": "07月海云帆丨章节：仙缘引路"
+              },
+              {
+                "value": "云关",
+                "count": 2,
+                "exampleScene": "|章节：天器入城"
+              }
+            ]
+          },
+          {
+            "label": "山水",
+            "options": [
+              {
+                "value": "岩台",
+                "count": 7,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "山岭",
+                "count": 6,
+                "exampleScene": "|章节：天境初开"
+              },
+              {
+                "value": "山脊",
+                "count": 4,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "山峰",
+                "count": 3,
+                "exampleScene": "竹海悬寺"
+              },
+              {
+                "value": "山谷",
+                "count": 3,
+                "exampleScene": "桃源仙渡"
+              },
+              {
+                "value": "悬崖",
+                "count": 3,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "河流",
+                "count": 3,
+                "exampleScene": "桃源仙渡"
+              },
+              {
+                "value": "镜湖",
+                "count": 2,
+                "exampleScene": "云上镜湖"
+              },
+              {
+                "value": "天池",
+                "count": 1,
+                "exampleScene": "青莲天池"
+              },
+              {
+                "value": "峭壁",
+                "count": 1,
+                "exampleScene": "云瀑天峡"
+              },
+              {
+                "value": "河谷",
+                "count": 1,
+                "exampleScene": "桃源仙渡"
+              },
+              {
+                "value": "雪山",
+                "count": 1,
+                "exampleScene": "昆仑雪阙"
+              }
+            ]
+          },
+          {
+            "label": "植被",
+            "options": [
+              {
+                "value": "古松",
+                "count": 8,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "松林",
+                "count": 2,
+                "exampleScene": "08太虚古琴"
+              },
+              {
+                "value": "桂树",
+                "count": 1,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "桃林",
+                "count": 1,
+                "exampleScene": "桃源仙渡"
+              },
+              {
+                "value": "白莲",
+                "count": 1,
+                "exampleScene": "青莲天池"
+              },
+              {
+                "value": "竹林",
+                "count": 1,
+                "exampleScene": "竹海悬寺"
+              },
+              {
+                "value": "竹海",
+                "count": 1,
+                "exampleScene": "竹海悬寺"
+              },
+              {
+                "value": "荷叶",
+                "count": 1,
+                "exampleScene": "青莲天池"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "celestial_altitude",
+        "label": "悬空与天宫空间",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "垂直位置",
+            "options": [
+              {
+                "value": "人间大地完全不可见",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "位于地面云层之上",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "处于云层与天穹之间",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "悬于九重天高空",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "漂浮在万里云海上方",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "高出人间群山数千米",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          },
+          {
+            "label": "悬浮承载",
+            "options": [
+              {
+                "value": "宫殿建立在巨型浮空仙岛上",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "宫阙由层叠云台承托",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "岛屿底部悬空并垂落瀑布",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "建筑跨越无底云渊",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "整座宫城悬浮于云海",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "白玉台基从云海中托起",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          },
+          {
+            "label": "云层关系",
+            "options": [
+              {
+                "value": "云海位于宫殿下方",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "云瀑从天城边缘坠入下层云海",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "前景可见云层下方的惊人高差",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "多层云雾穿过宫殿台基",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "宫殿上方仍有更高天穹与云层",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "远处宫阙从云层逐级升起",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          },
+          {
+            "label": "天宫交通",
+            "options": [
+              {
+                "value": "云帆仙舟停泊于高空云港",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "云路在空中连接各层天宫",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "天门直接通向无边云海",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "悬空长桥横跨云海",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "白玉天阶连接浮空宫阙",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "飞廊与索桥连接悬浮仙岛",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          },
+          {
+            "label": "仙气异象",
+            "options": [
+              {
+                "value": "云海潮汐环绕整座天城",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "仙鹤在远处云层之间穿行",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "天光从云门与云隙中倾泻",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "祥云绕柱并流过宫廊",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "细碎金色云辉沿屋脊缓慢游动",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "薄金霞气笼罩层层宫阙",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "scene",
+        "label": "核心中式仙境场景",
+        "selection": "single",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "宫城",
+            "options": [
+              {
+                "value": "宫阙",
+                "count": 25,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "宫城",
+                "count": 15,
+                "exampleScene": "黑金夜宫"
+              },
+              {
+                "value": "宫殿",
+                "count": 11,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "天宫",
+                "count": 8,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "宫苑",
+                "count": 4,
+                "exampleScene": "青莲天池"
+              },
+              {
+                "value": "山城",
+                "count": 4,
+                "exampleScene": "章节：云光归阙"
+              },
+              {
+                "value": "月宫",
+                "count": 2,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "寺院",
+                "count": 1,
+                "exampleScene": "桃源仙渡"
+              },
+              {
+                "value": "道院",
+                "count": 1,
+                "exampleScene": "竹海悬寺"
+              }
+            ]
+          },
+          {
+            "label": "通行空间",
+            "options": [
+              {
+                "value": "天门",
+                "count": 5,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "石桥",
+                "count": 5,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "廊桥",
+                "count": 4,
+                "exampleScene": "桃源仙渡"
+              },
+              {
+                "value": "云港",
+                "count": 3,
+                "exampleScene": "07月海云帆丨章节：仙缘引路"
+              },
+              {
+                "value": "大道",
+                "count": 3,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "码头",
+                "count": 3,
+                "exampleScene": "蓬莱云港"
+              },
+              {
+                "value": "长桥",
+                "count": 3,
+                "exampleScene": "黑金夜宫"
+              },
+              {
+                "value": "天阶",
+                "count": 2,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "山门",
+                "count": 2,
+                "exampleScene": "云瀑天峡"
+              },
+              {
+                "value": "长廊",
+                "count": 1,
+                "exampleScene": "盘龙云廊"
+              }
+            ]
+          },
+          {
+            "label": "自然奇境",
+            "options": [
+              {
+                "value": "云上镜湖",
+                "count": 1,
+                "exampleScene": "云上镜湖"
+              },
+              {
+                "value": "青莲天池",
+                "count": 1,
+                "exampleScene": "青莲天池"
+              }
+            ]
+          },
+          {
+            "label": "神话设施",
+            "options": [
+              {
+                "value": "云帆船",
+                "count": 1,
+                "exampleScene": "蓬莱云港"
+              },
+              {
+                "value": "仙舟",
+                "count": 1,
+                "exampleScene": "07月海云帆丨章节：仙缘引路"
+              },
+              {
+                "value": "观象台",
+                "count": 1,
+                "exampleScene": "星河观象台"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "architecture",
+        "label": "建筑形制与构件",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "时代形制",
+            "options": [
+              {
+                "value": "东方",
+                "count": 11,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "中式",
+                "count": 6,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "唐宋风格",
+                "count": 6,
+                "exampleScene": "云上镜湖"
+              },
+              {
+                "value": "唐风",
+                "count": 2,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "中国古代",
+                "count": 1,
+                "exampleScene": "星河观象台"
+              },
+              {
+                "value": "宋式",
+                "count": 1,
+                "exampleScene": "星河观象台"
+              }
+            ]
+          },
+          {
+            "label": "主体构件",
+            "options": [
+              {
+                "value": "青灰瓦顶",
+                "count": 10,
+                "exampleScene": "云上镜湖"
+              },
+              {
+                "value": "斗拱",
+                "count": 7,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "栏杆",
+                "count": 5,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "白玉台地",
+                "count": 4,
+                "exampleScene": "蓬莱云港"
+              },
+              {
+                "value": "青黑瓦顶",
+                "count": 4,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "宫廊",
+                "count": 3,
+                "exampleScene": "|章节：天器入城"
+              },
+              {
+                "value": "柱廊",
+                "count": 3,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "汉白玉台基",
+                "count": 3,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "亭阁",
+                "count": 2,
+                "exampleScene": "星河观象台"
+              },
+              {
+                "value": "暗朱红木构",
+                "count": 2,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "朱红木柱",
+                "count": 1,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "白玉城墙",
+                "count": 1,
+                "exampleScene": "15天将遗像"
+              },
+              {
+                "value": "白玉道路",
+                "count": 1,
+                "exampleScene": "10宝鼎承霞"
+              },
+              {
+                "value": "白玉长阶",
+                "count": 1,
+                "exampleScene": "|章节：天器入城"
+              },
+              {
+                "value": "飞檐",
+                "count": 1,
+                "exampleScene": "盘龙云廊"
+              }
+            ]
+          },
+          {
+            "label": "装饰构件",
+            "options": [
+              {
+                "value": "古铜构件",
+                "count": 1,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "浮雕",
+                "count": 1,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "盘龙柱",
+                "count": 1,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "石雕",
+                "count": 1,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "祥云纹",
+                "count": 1,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "雕花石柱",
+                "count": 1,
+                "exampleScene": "蓬莱云港"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "architecture_relation",
+        "label": "建筑空间关系",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "总体秩序",
+            "options": [
+              {
+                "value": "主殿居中",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "宫阙逐级退远",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "前殿后阁",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "远景宫阙半隐云中",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          },
+          {
+            "label": "场景连接",
+            "options": [
+              {
+                "value": "门内望向云海",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "廊桥连接两处台地",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "建筑依崖展开",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "临水台榭",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "scene_mechanism",
+        "label": "场景机制与空间因果",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "场所用途",
+            "options": [
+              { "value": "天界渡口：接引仙舟与来客", "count": 0, "exampleScene": "" },
+              { "value": "观象台：测量天河与星轨", "count": 0, "exampleScene": "" },
+              { "value": "藏书天阁：典籍沿开放书架分层归藏", "count": 0, "exampleScene": "" },
+              { "value": "朝会外廊：通往主殿的静候空间", "count": 0, "exampleScene": "" }
+            ]
+          },
+          {
+            "label": "进入与路径",
+            "options": [
+              { "value": "人物由近处入口沿台道抵达远端节点", "count": 0, "exampleScene": "" },
+              { "value": "人物穿过门阙后进入下一层平台", "count": 0, "exampleScene": "" },
+              { "value": "人物在观景台停步，前方为明确的观测对象", "count": 0, "exampleScene": "" }
+            ]
+          },
+          {
+            "label": "前景尺度锚点",
+            "options": [
+              { "value": "无栏云台：人物站在开阔玉台边缘", "count": 0, "exampleScene": "" },
+              { "value": "临廊短阶：人物由人尺度檐下望向巨宫", "count": 0, "exampleScene": "" },
+              { "value": "临水台：静水或云上水面映出远处重檐", "count": 0, "exampleScene": "" },
+              { "value": "观象台：人物在简洁仪台前仰观远方天阙", "count": 0, "exampleScene": "" },
+              { "value": "舟坞平台：人物站在泊位边望向远处巨构", "count": 0, "exampleScene": "" },
+              { "value": "园林古松：仅用于山门或园林场景的人尺度停驻处", "count": 0, "exampleScene": "" }
+            ]
+          },
+          {
+            "label": "巨构连接与气流",
+            "options": [
+              { "value": "巨檐、巨柱与台基连续相接，形成可行走的室外空间", "count": 0, "exampleScene": "" },
+              { "value": "云气从柱间穿行并沿台道下方流出", "count": 0, "exampleScene": "" },
+              { "value": "远处巨构以桥、台阶或廊道与当前空间保持明确连接", "count": 0, "exampleScene": "" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "subject",
+        "label": "主体或巨物",
+        "selection": "single",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "人物主体",
+            "options": [
+              {
+                "value": "仙子",
+                "count": 4,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "古风女子",
+                "count": 3,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "修行者",
+                "count": 2,
+                "exampleScene": "云瀑天峡"
+              },
+              {
+                "value": "信使",
+                "count": 1,
+                "exampleScene": "雨幕天城"
+              },
+              {
+                "value": "朝圣者",
+                "count": 1,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "独行者",
+                "count": 1,
+                "exampleScene": "黑金夜宫"
+              },
+              {
+                "value": "观星者",
+                "count": 1,
+                "exampleScene": "星河观象台"
+              }
+            ]
+          },
+          {
+            "label": "建筑主体",
+            "options": [
+              {
+                "value": "宫城",
+                "count": 15,
+                "exampleScene": "黑金夜宫"
+              },
+              {
+                "value": "主殿",
+                "count": 8,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "天宫",
+                "count": 8,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "天门",
+                "count": 5,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "云港",
+                "count": 3,
+                "exampleScene": "07月海云帆丨章节：仙缘引路"
+              },
+              {
+                "value": "仙岛",
+                "count": 1,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "观象台",
+                "count": 1,
+                "exampleScene": "星河观象台"
+              }
+            ]
+          },
+          {
+            "label": "东方巨物",
+            "options": [
+              {
+                "value": "三足宝鼎",
+                "count": 1,
+                "exampleScene": "10宝鼎承霞"
+              },
+              {
+                "value": "云帆仙舟",
+                "count": 1,
+                "exampleScene": "07月海云帆丨章节：仙缘引路"
+              },
+              {
+                "value": "华盖",
+                "count": 1,
+                "exampleScene": "13华盖覆城"
+              },
+              {
+                "value": "天锚",
+                "count": 1,
+                "exampleScene": "16 天锚镇潮"
+              },
+              {
+                "value": "太虚古琴",
+                "count": 1,
+                "exampleScene": "08太虚古琴"
+              },
+              {
+                "value": "巨型宫灯",
+                "count": 1,
+                "exampleScene": "12天灯照海"
+              },
+              {
+                "value": "玉如意",
+                "count": 1,
+                "exampleScene": "06如意横天"
+              },
+              {
+                "value": "玉木织梭",
+                "count": 1,
+                "exampleScene": "14天梭织霞"
+              },
+              {
+                "value": "白玉折扇",
+                "count": 1,
+                "exampleScene": "1玉扇开天"
+              },
+              {
+                "value": "青铜天鼓",
+                "count": 1,
+                "exampleScene": "|章节：天器入城"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "narrative_action",
+        "label": "叙事动作",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "抵达与行进",
+            "options": [
+              {
+                "value": "登阶朝觐",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "穿廊入宫",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "云舟抵达",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "临水停舟",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          },
+          {
+            "label": "停留与观看",
+            "options": [
+              {
+                "value": "观象",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "静立远望",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "凭栏望云",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "听瀑停步",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          },
+          {
+            "label": "旅程与仪式",
+            "options": [
+              {
+                "value": "风雪跋涉",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "穿越云桥",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "沿崖而行",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "穿行松林",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "仪式进行中",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "小型仪仗",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "远景朝圣队列",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "两人同行",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "character",
+        "label": "人物设计",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "视角",
+            "options": [
+              {
+                "value": "仰望",
+                "count": 13,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "背对镜头",
+                "count": 12,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "侧望",
+                "count": 9,
+                "exampleScene": "|章节：天境初开"
+              },
+              {
+                "value": "停步仰望",
+                "count": 7,
+                "exampleScene": "章节：云光归阙"
+              },
+              {
+                "value": "完整背影",
+                "count": 3,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "遥望",
+                "count": 3,
+                "exampleScene": "05白鹤临阙"
+              },
+              {
+                "value": "侧后身",
+                "count": 2,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "独自行走",
+                "count": 1,
+                "exampleScene": "竹海悬寺"
+              }
+            ]
+          },
+          {
+            "label": "服饰",
+            "options": [
+              {
+                "value": "月白浅蓝衣",
+                "count": 16,
+                "exampleScene": "章节：天迹初现"
+              },
+              {
+                "value": "白蓝汉服",
+                "count": 2,
+                "exampleScene": "云上镜湖"
+              },
+              {
+                "value": "酒红飘带",
+                "count": 2,
+                "exampleScene": "云上镜湖"
+              },
+              {
+                "value": "暗红披风",
+                "count": 1,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "浅蓝内衬",
+                "count": 1,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "灰白长袍",
+                "count": 1,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "白色长裙",
+                "count": 1,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "蓝灰长袍",
+                "count": 1,
+                "exampleScene": "雨幕天城"
+              },
+              {
+                "value": "象牙白油纸伞",
+                "count": 1,
+                "exampleScene": "雨幕天城"
+              }
+            ]
+          },
+          {
+            "label": "尺度",
+            "options": [
+              {
+                "value": "正常人作为尺度参照",
+                "count": 0,
+                "exampleScene": "巨构天界"
+              },
+              {
+                "value": "人物很小",
+                "count": 9,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "人物极小",
+                "count": 1,
+                "exampleScene": "云瀑天峡"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "camera",
+        "label": "镜头与机位",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "焦段",
+            "options": [
+              {
+                "value": "26mm",
+                "count": 10,
+                "exampleScene": "星河观象台"
+              },
+              {
+                "value": "24mm",
+                "count": 8,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "28mm",
+                "count": 8,
+                "exampleScene": "黑金夜宫"
+              },
+              {
+                "value": "40mm",
+                "count": 5,
+                "exampleScene": "雨幕天城"
+              },
+              {
+                "value": "35mm",
+                "count": 4,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "50mm",
+                "count": 4,
+                "exampleScene": "|章节：天境初开"
+              },
+              {
+                "value": "45mm",
+                "count": 3,
+                "exampleScene": "|章节：天器入城"
+              }
+            ]
+          },
+          {
+            "label": "镜头",
+            "options": [
+              {
+                "value": "广角",
+                "count": 16,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "宽幅构图",
+                "count": 1,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "超广角",
+                "count": 1,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "长焦压缩",
+                "count": 1,
+                "exampleScene": "章节：天象临城"
+              }
+            ]
+          },
+          {
+            "label": "机位",
+            "options": [
+              {
+                "value": "低机位",
+                "count": 18,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "侧向低机位",
+                "count": 2,
+                "exampleScene": "05白鹤临阙"
+              },
+              {
+                "value": "对岸远望",
+                "count": 2,
+                "exampleScene": "|章节：天器入城"
+              },
+              {
+                "value": "斜向构图",
+                "count": 2,
+                "exampleScene": "蓬莱云港"
+              },
+              {
+                "value": "贴近水面",
+                "count": 2,
+                "exampleScene": "云上镜湖"
+              },
+              {
+                "value": "超低机位",
+                "count": 2,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "高位斜俯",
+                "count": 2,
+                "exampleScene": "星河观象台"
+              },
+              {
+                "value": "略低机位",
+                "count": 1,
+                "exampleScene": "雨幕天城"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "view_position",
+        "label": "观看位置与景别",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "景别",
+            "options": [
+              {
+                "value": "建立全景",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "远观全貌",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "门内框景",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "廊下望远",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          },
+          {
+            "label": "观看位置",
+            "options": [
+              {
+                "value": "贴近水面",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "隔云遥望",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "俯瞰云层",
+                "count": 0,
+                "exampleScene": ""
+              },
+              {
+                "value": "人物视角仰望",
+                "count": 0,
+                "exampleScene": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "composition",
+        "label": "构图与空间",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "空间层次",
+            "options": [
+              {
+                "value": "远景",
+                "count": 7,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "中景",
+                "count": 5,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "五层以上",
+                "count": 2,
+                "exampleScene": "蓬莱云港"
+              },
+              {
+                "value": "五层空间",
+                "count": 2,
+                "exampleScene": "10宝鼎承霞"
+              },
+              {
+                "value": "六层以上",
+                "count": 2,
+                "exampleScene": "雨幕天城"
+              },
+              {
+                "value": "层层展开",
+                "count": 2,
+                "exampleScene": "青莲天池"
+              },
+              {
+                "value": "空间纵深",
+                "count": 1,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "近景",
+                "count": 1,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "逐级升起",
+                "count": 1,
+                "exampleScene": "云海天门"
+              }
+            ]
+          },
+          {
+            "label": "构图秩序",
+            "options": [
+              {
+                "value": "框景",
+                "count": 3,
+                "exampleScene": "竹海悬寺"
+              },
+              {
+                "value": "引导线",
+                "count": 2,
+                "exampleScene": "云上镜湖"
+              },
+              {
+                "value": "斜向构图",
+                "count": 2,
+                "exampleScene": "蓬莱云港"
+              },
+              {
+                "value": "S形引导线",
+                "count": 1,
+                "exampleScene": "桃源仙渡"
+              },
+              {
+                "value": "三分之四构图",
+                "count": 1,
+                "exampleScene": "12天灯照海"
+              },
+              {
+                "value": "上下对称",
+                "count": 1,
+                "exampleScene": "云上镜湖"
+              },
+              {
+                "value": "对称构图",
+                "count": 1,
+                "exampleScene": "黑金夜宫"
+              },
+              {
+                "value": "左右对称",
+                "count": 1,
+                "exampleScene": "白玉朝圣大道"
+              }
+            ]
+          },
+          {
+            "label": "尺度关系",
+            "options": [
+              {
+                "value": "人物反衬建筑",
+                "count": 1,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "尺度差",
+                "count": 1,
+                "exampleScene": "千柱天宫"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "lighting",
+        "label": "光线设计",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "主光",
+            "options": [
+              {
+                "value": "晨光",
+                "count": 23,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "夕阳",
+                "count": 5,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "月光",
+                "count": 4,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "暮光",
+                "count": 2,
+                "exampleScene": "章节：云光归阙"
+              },
+              {
+                "value": "星光",
+                "count": 1,
+                "exampleScene": "星河观象台"
+              },
+              {
+                "value": "暖金日出",
+                "count": 1,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "破云金光",
+                "count": 1,
+                "exampleScene": "|章节：天器入城"
+              }
+            ]
+          },
+          {
+            "label": "光效",
+            "options": [
+              {
+                "value": "倒影",
+                "count": 7,
+                "exampleScene": "黑金夜宫"
+              },
+              {
+                "value": "金边",
+                "count": 5,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "光束",
+                "count": 4,
+                "exampleScene": "竹海悬寺"
+              },
+              {
+                "value": "丁达尔光",
+                "count": 2,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "反射",
+                "count": 2,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "柔和光晕",
+                "count": 2,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "逆光",
+                "count": 2,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "体积光",
+                "count": 1,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "边光",
+                "count": 1,
+                "exampleScene": "盘龙云廊"
+              }
+            ]
+          },
+          {
+            "label": "光色关系",
+            "options": [
+              {
+                "value": "冷暖对比",
+                "count": 3,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "银蓝月光",
+                "count": 2,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "冷青灰环境光",
+                "count": 1,
+                "exampleScene": "雨幕天城"
+              },
+              {
+                "value": "暖金边缘",
+                "count": 1,
+                "exampleScene": "蓬莱云港"
+              },
+              {
+                "value": "金蓝对比",
+                "count": 1,
+                "exampleScene": "白玉朝圣大道"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "palette",
+        "label": "色彩基调",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "冷色",
+            "options": [
+              {
+                "value": "冷青",
+                "count": 22,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "象牙白",
+                "count": 13,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "银蓝",
+                "count": 10,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "深蓝",
+                "count": 7,
+                "exampleScene": "黑金夜宫"
+              },
+              {
+                "value": "冷青灰",
+                "count": 4,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "青绿",
+                "count": 3,
+                "exampleScene": "青莲天池"
+              },
+              {
+                "value": "灰白",
+                "count": 2,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "靛蓝",
+                "count": 2,
+                "exampleScene": "黑金夜宫"
+              }
+            ]
+          },
+          {
+            "label": "暖色",
+            "options": [
+              {
+                "value": "暖金",
+                "count": 11,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "淡金",
+                "count": 8,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "酒红",
+                "count": 7,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "暗朱红",
+                "count": 6,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "玫瑰金",
+                "count": 3,
+                "exampleScene": "霜梅云宫"
+              },
+              {
+                "value": "古铜金",
+                "count": 1,
+                "exampleScene": "黑金夜宫"
+              },
+              {
+                "value": "琥珀色",
+                "count": 1,
+                "exampleScene": "星河观象台"
+              }
+            ]
+          },
+          {
+            "label": "控制",
+            "options": [
+              {
+                "value": "克制",
+                "count": 20,
+                "exampleScene": "云瀑天峡"
+              },
+              {
+                "value": "通透",
+                "count": 6,
+                "exampleScene": "霞幕玉屏"
+              },
+              {
+                "value": "低饱和",
+                "count": 3,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "清冷",
+                "count": 3,
+                "exampleScene": "月宫桂影"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "material",
+        "label": "材质与细节",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "建筑材质",
+            "options": [
+              {
+                "value": "白玉",
+                "count": 41,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "木构",
+                "count": 23,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "瓦片",
+                "count": 8,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "汉白玉",
+                "count": 6,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "青铜",
+                "count": 6,
+                "exampleScene": "星河观象台"
+              },
+              {
+                "value": "古铜",
+                "count": 4,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "岩石",
+                "count": 4,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "木纹",
+                "count": 3,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "真实石材",
+                "count": 2,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "铜锈",
+                "count": 1,
+                "exampleScene": "星河观象台"
+              }
+            ]
+          },
+          {
+            "label": "自然材质",
+            "options": [
+              {
+                "value": "瀑布",
+                "count": 14,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "云雾",
+                "count": 12,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "树皮",
+                "count": 3,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "水流",
+                "count": 3,
+                "exampleScene": "云瀑天峡"
+              },
+              {
+                "value": "冰层",
+                "count": 1,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "积雪",
+                "count": 1,
+                "exampleScene": "昆仑雪阙"
+              },
+              {
+                "value": "青苔",
+                "count": 1,
+                "exampleScene": "桃源仙渡"
+              }
+            ]
+          },
+          {
+            "label": "表面状态",
+            "options": [
+              {
+                "value": "湿润",
+                "count": 14,
+                "exampleScene": "云瀑天峡"
+              },
+              {
+                "value": "雨后",
+                "count": 13,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "半透明",
+                "count": 9,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "风化",
+                "count": 4,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "衣料质感",
+                "count": 2,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "亚光",
+                "count": 1,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "湿石反射",
+                "count": 1,
+                "exampleScene": "蓬莱云港"
+              },
+              {
+                "value": "真实重量",
+                "count": 1,
+                "exampleScene": "昆仑雪阙"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mood",
+        "label": "氛围与成片感",
+        "selection": "multi",
+        "allowCustom": true,
+        "groups": [
+          {
+            "label": "宏大",
+            "options": [
+              {
+                "value": "辽阔",
+                "count": 10,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "宏伟",
+                "count": 8,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "不可思议",
+                "count": 2,
+                "exampleScene": "云潮白玉城"
+              },
+              {
+                "value": "世界观",
+                "count": 2,
+                "exampleScene": "浮空仙岛"
+              },
+              {
+                "value": "壮阔",
+                "count": 2,
+                "exampleScene": "云瀑天峡"
+              },
+              {
+                "value": "恢弘",
+                "count": 2,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "史诗感",
+                "count": 1,
+                "exampleScene": "云海天门"
+              }
+            ]
+          },
+          {
+            "label": "精神气质",
+            "options": [
+              {
+                "value": "神圣",
+                "count": 11,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "空灵",
+                "count": 10,
+                "exampleScene": "盘龙云廊"
+              },
+              {
+                "value": "庄严",
+                "count": 9,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "宁静",
+                "count": 7,
+                "exampleScene": "桃源仙渡"
+              },
+              {
+                "value": "神秘",
+                "count": 7,
+                "exampleScene": "黑金夜宫"
+              },
+              {
+                "value": "肃穆",
+                "count": 3,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "仪式感",
+                "count": 1,
+                "exampleScene": "白玉朝圣大道"
+              },
+              {
+                "value": "孤独",
+                "count": 1,
+                "exampleScene": "月宫桂影"
+              }
+            ]
+          },
+          {
+            "label": "美学气质",
+            "options": [
+              {
+                "value": "清澈",
+                "count": 11,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "电影级",
+                "count": 9,
+                "exampleScene": "云海天门"
+              },
+              {
+                "value": "浪漫",
+                "count": 7,
+                "exampleScene": "蓬莱云港"
+              },
+              {
+                "value": "电影感",
+                "count": 2,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "诗意",
+                "count": 2,
+                "exampleScene": "月宫桂影"
+              },
+              {
+                "value": "高级",
+                "count": 2,
+                "exampleScene": "千柱天宫"
+              },
+              {
+                "value": "唯美",
+                "count": 1,
+                "exampleScene": "月宫桂影"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "negativeGroups": [
+      {
+        "label": "人物控制",
+        "selection": "multi",
+        "allowCustom": true,
+        "options": [
+          {
+            "value": "人物巨大",
+            "count": 6,
+            "exampleScene": "白玉朝圣大道"
+          },
+          {
+            "value": "人物正脸",
+            "count": 5,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "战斗",
+            "count": 4,
+            "exampleScene": "云瀑天峡"
+          },
+          {
+            "value": "巨大人物",
+            "count": 3,
+            "exampleScene": "浮空仙岛"
+          },
+          {
+            "value": "人物比例过大",
+            "count": 2,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "人物特写",
+            "count": 2,
+            "exampleScene": "浮空仙岛"
+          },
+          {
+            "value": "拥挤人群",
+            "count": 2,
+            "exampleScene": "白玉朝圣大道"
+          },
+          {
+            "value": "多余人物",
+            "count": 1,
+            "exampleScene": "桃源仙渡"
+          },
+          {
+            "value": "打斗",
+            "count": 1,
+            "exampleScene": "竹海悬寺"
+          },
+          {
+            "value": "畸形手指",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "肢体错位",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "人物漂浮",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "服装穿模",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "面部失焦",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "人物尺度错误",
+            "count": 0,
+            "exampleScene": ""
+          }
+        ]
+      },
+      {
+        "label": "建筑结构",
+        "selection": "multi",
+        "allowCustom": true,
+        "options": [
+          {
+            "value": "重复",
+            "count": 4,
+            "exampleScene": "浮空仙岛"
+          },
+          {
+            "value": "桥梁断裂",
+            "count": 3,
+            "exampleScene": "浮空仙岛"
+          },
+          {
+            "value": "穿模",
+            "count": 2,
+            "exampleScene": "盘龙云廊"
+          },
+          {
+            "value": "建筑结构扭曲",
+            "count": 1,
+            "exampleScene": "千柱天宫"
+          },
+          {
+            "value": "日式寺庙",
+            "count": 1,
+            "exampleScene": "竹海悬寺"
+          },
+          {
+            "value": "柱体弯曲",
+            "count": 1,
+            "exampleScene": "白玉朝圣大道"
+          },
+          {
+            "value": "柱子倾斜",
+            "count": 1,
+            "exampleScene": "千柱天宫"
+          },
+          {
+            "value": "欧美城堡",
+            "count": 1,
+            "exampleScene": "浮空仙岛"
+          },
+          {
+            "value": "结构错乱",
+            "count": 1,
+            "exampleScene": "蓬莱云港"
+          },
+          {
+            "value": "西式建筑",
+            "count": 1,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "透视错误",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "地平线错误",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "比例失衡",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "屋檐融化",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "重复楼阁",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "重复门窗",
+            "count": 0,
+            "exampleScene": ""
+          }
+        ]
+      },
+      {
+        "label": "风格媒介",
+        "selection": "multi",
+        "allowCustom": true,
+        "options": [
+          {
+            "value": "动漫",
+            "count": 59,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "游戏CG",
+            "count": 49,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "动漫风",
+            "count": 9,
+            "exampleScene": "白玉朝圣大道"
+          },
+          {
+            "value": "廉价游戏CG",
+            "count": 9,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "卡通",
+            "count": 7,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "产品摄影",
+            "count": 3,
+            "exampleScene": "10宝鼎承霞"
+          },
+          {
+            "value": "塑料CG",
+            "count": 3,
+            "exampleScene": "云上镜湖"
+          },
+          {
+            "value": "赛博朋克",
+            "count": 3,
+            "exampleScene": "黑金夜宫"
+          },
+          {
+            "value": "蒸汽朋克",
+            "count": 2,
+            "exampleScene": "蓬莱云港"
+          },
+          {
+            "value": "商品摆拍",
+            "count": 1,
+            "exampleScene": "|章节：天器入城"
+          },
+          {
+            "value": "塑料材质",
+            "count": 1,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "塑料质感",
+            "count": 1,
+            "exampleScene": "盘龙云廊"
+          },
+          {
+            "value": "AI涂抹感",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "低清晰度",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "过度锐化",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "噪点",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "模糊主体",
+            "count": 0,
+            "exampleScene": ""
+          }
+        ]
+      },
+      {
+        "label": "光色效果",
+        "selection": "multi",
+        "allowCustom": true,
+        "options": [
+          {
+            "value": "霓虹",
+            "count": 32,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "法阵",
+            "count": 9,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "高饱和",
+            "count": 6,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "艳丽",
+            "count": 3,
+            "exampleScene": "千柱天宫"
+          },
+          {
+            "value": "过曝",
+            "count": 3,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "黑暗恐怖",
+            "count": 2,
+            "exampleScene": "|章节：天器入城"
+          },
+          {
+            "value": "强烈发光",
+            "count": 1,
+            "exampleScene": "千柱天宫"
+          },
+          {
+            "value": "暗部死黑",
+            "count": 1,
+            "exampleScene": "黑金夜宫"
+          },
+          {
+            "value": "过度发光",
+            "count": 1,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "过度饱和",
+            "count": 1,
+            "exampleScene": "云上镜湖"
+          }
+        ]
+      },
+      {
+        "label": "主体误读",
+        "selection": "multi",
+        "allowCustom": true,
+        "options": [
+          {
+            "value": "传送门",
+            "count": 18,
+            "exampleScene": "月宫桂影"
+          },
+          {
+            "value": "武器",
+            "count": 5,
+            "exampleScene": "雨幕天城"
+          },
+          {
+            "value": "工业",
+            "count": 4,
+            "exampleScene": "|章节：天器入城"
+          },
+          {
+            "value": "现代",
+            "count": 4,
+            "exampleScene": "蓬莱云港"
+          },
+          {
+            "value": "神像",
+            "count": 4,
+            "exampleScene": "青莲天池"
+          },
+          {
+            "value": "佛像",
+            "count": 2,
+            "exampleScene": "青莲天池"
+          },
+          {
+            "value": "宗教",
+            "count": 2,
+            "exampleScene": "白玉朝圣大道"
+          },
+          {
+            "value": "博物馆陈列",
+            "count": 1,
+            "exampleScene": "10宝鼎承霞"
+          },
+          {
+            "value": "悬空展示",
+            "count": 1,
+            "exampleScene": "|章节：天器入城"
+          },
+          {
+            "value": "独立悬浮",
+            "count": 1,
+            "exampleScene": "10宝鼎承霞"
+          },
+          {
+            "value": "科幻飞船",
+            "count": 1,
+            "exampleScene": "星河观象台"
+          }
+        ]
+      },
+      {
+        "label": "地面化限制",
+        "selection": "multi",
+        "allowCustom": true,
+        "options": [
+          {
+            "value": "云海只作为远景背景",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "低海拔山城",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "可见人间地面",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "地平线贴近建筑",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "宫殿坐落在平地",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "宫殿建在普通山顶",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "建筑底部连接地面",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "普通地面建筑",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "普通山景旅游区",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "普通陆地道路",
+            "count": 0,
+            "exampleScene": ""
+          },
+          {
+            "value": "雾气只贴着地面",
+            "count": 0,
+            "exampleScene": ""
+          }
+        ]
+      },
+      {
+        "label": "输出污染",
+        "selection": "multi",
+        "allowCustom": true,
+        "options": [
+          {
+            "value": "Logo",
+            "count": 63,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "水印",
+            "count": 63,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "文字",
+            "count": 62,
+            "exampleScene": "云海天门"
+          },
+          {
+            "value": "伪文字",
+            "count": 4,
+            "exampleScene": "日晕琼阙"
+          }
+        ]
+      }
+    ]
+  },
+  "groups": [
+    {
+      "title": "世界设定",
+      "ids": [
+        "world_type",
+        "time_weather",
+        "season_dynamic",
+        "environment",
+        "celestial_altitude",
+        "scene",
+        "architecture",
+        "architecture_relation"
+      ]
+    },
+    {
+      "title": "主体叙事",
+      "ids": [
+        "subject",
+        "narrative_action",
+        "character"
+      ]
+    },
+    {
+      "title": "摄影构图",
+      "ids": [
+        "camera",
+        "view_position",
+        "composition"
+      ]
+    },
+    {
+      "title": "光色质感",
+      "ids": [
+        "lighting",
+        "palette",
+        "material",
+        "mood"
+      ]
+    }
+  ],
+  "celestialDefault": [
+    "位于地面云层之上",
+    "人间大地完全不可见",
+    "整座宫城悬浮于云海",
+    "云海位于宫殿下方",
+    "多层云雾穿过宫殿台基",
+    "白玉天阶连接浮空宫阙",
+    "祥云绕柱并流过宫廊",
+    "薄金霞气笼罩层层宫阙"
+  ],
+  "presets": {
+    "云上宫城": {
+      "time_weather": [
+        "清晨",
+        "薄雾"
+      ],
+      "environment": [
+        "云海",
+        "山峰"
+      ],
+      "scene": [
+        "天宫"
+      ],
+      "architecture": [
+        "唐宋风格",
+        "汉白玉台基",
+        "暗朱红木构",
+        "青灰瓦顶"
+      ],
+      "subject": [
+        "天宫"
+      ],
+      "character": [
+        "背对镜头",
+        "人物很小",
+        "酒红飘带"
+      ],
+      "camera": [
+        "24mm",
+        "广角",
+        "低机位"
+      ],
+      "composition": [
+        "五层以上",
+        "引导线",
+        "人物反衬建筑"
+      ],
+      "lighting": [
+        "暖金日出",
+        "体积光",
+        "冷暖对比"
+      ],
+      "palette": [
+        "冷青灰",
+        "暖金",
+        "低饱和"
+      ],
+      "material": [
+        "真实石材",
+        "木纹",
+        "瓦片",
+        "衣料质感"
+      ],
+      "mood": [
+        "宏伟",
+        "空灵",
+        "庄严",
+        "电影感"
+      ],
+      "world_type": [
+        "九重天宫"
+      ],
+      "architecture_relation": [
+        "主殿居中",
+        "宫阙逐级退远",
+        "门内望向云海"
+      ],
+      "narrative_action": [
+        "登阶朝觐"
+      ],
+      "view_position": [
+        "建立全景",
+        "人物视角仰望"
+      ],
+      "season_dynamic": [
+        "云潮流向",
+        "衣带受风"
+      ]
+    },
+    "山水秘境": {
+      "time_weather": [
+        "雨后初晴",
+        "云雾"
+      ],
+      "environment": [
+        "山谷",
+        "悬崖",
+        "古松"
+      ],
+      "scene": [
+        "竹海悬寺"
+      ],
+      "architecture": [
+        "唐宋风格",
+        "亭阁",
+        "廊桥"
+      ],
+      "subject": [
+        "修行者"
+      ],
+      "character": [
+        "独自行走",
+        "人物很小",
+        "灰白长袍"
+      ],
+      "camera": [
+        "28mm",
+        "广角",
+        "高位斜俯"
+      ],
+      "composition": [
+        "近景",
+        "中景",
+        "远景",
+        "S形引导线"
+      ],
+      "lighting": [
+        "晨光",
+        "光束",
+        "冷暖对比"
+      ],
+      "palette": [
+        "青绿",
+        "冷青灰",
+        "低饱和"
+      ],
+      "material": [
+        "岩石",
+        "青苔",
+        "湿润",
+        "水流"
+      ],
+      "mood": [
+        "宁静",
+        "空灵",
+        "诗意",
+        "电影感"
+      ],
+      "world_type": [
+        "悬山仙境"
+      ],
+      "architecture_relation": [
+        "建筑依崖展开",
+        "廊桥连接两处台地"
+      ],
+      "narrative_action": [
+        "沿崖而行",
+        "听瀑停步"
+      ],
+      "view_position": [
+        "门内框景",
+        "远观全貌"
+      ],
+      "season_dynamic": [
+        "夏雨云瀑",
+        "瀑流落点"
+      ]
+    },
+    "月夜仙宫": {
+      "time_weather": [
+        "月夜",
+        "薄雾"
+      ],
+      "environment": [
+        "云海",
+        "镜湖",
+        "桂树"
+      ],
+      "scene": [
+        "月宫"
+      ],
+      "architecture": [
+        "唐宋风格",
+        "白玉平台",
+        "青黑瓦顶"
+      ],
+      "subject": [
+        "仙子"
+      ],
+      "character": [
+        "侧后身",
+        "人物很小",
+        "白蓝汉服"
+      ],
+      "camera": [
+        "35mm",
+        "宽幅构图"
+      ],
+      "composition": [
+        "上下对称",
+        "空间纵深"
+      ],
+      "lighting": [
+        "月光",
+        "边光",
+        "倒影"
+      ],
+      "palette": [
+        "银蓝",
+        "淡金",
+        "清冷"
+      ],
+      "material": [
+        "白玉",
+        "木构",
+        "湿石反射",
+        "衣料质感"
+      ],
+      "mood": [
+        "宁静",
+        "孤独",
+        "唯美",
+        "神秘"
+      ],
+      "world_type": [
+        "云海水境"
+      ],
+      "architecture_relation": [
+        "临水台榭",
+        "远景宫阙半隐云中"
+      ],
+      "narrative_action": [
+        "凭栏望云"
+      ],
+      "view_position": [
+        "贴近水面",
+        "隔云遥望"
+      ],
+      "season_dynamic": [
+        "云潮流向"
+      ]
+    },
+    "雨雪圣境": {
+      "time_weather": [
+        "风雪",
+        "低云"
+      ],
+      "environment": [
+        "雪山",
+        "山脊",
+        "云海"
+      ],
+      "scene": [
+        "昆仑雪阙"
+      ],
+      "architecture": [
+        "唐宋风格",
+        "白玉长阶",
+        "暗朱红木构",
+        "青黑瓦顶"
+      ],
+      "subject": [
+        "朝圣者"
+      ],
+      "character": [
+        "背对镜头",
+        "人物极小",
+        "暗红披风"
+      ],
+      "camera": [
+        "24mm",
+        "广角",
+        "低机位"
+      ],
+      "composition": [
+        "逐级升起",
+        "尺度差"
+      ],
+      "lighting": [
+        "晨光",
+        "边光",
+        "冷暖对比"
+      ],
+      "palette": [
+        "灰白",
+        "冷青",
+        "暖金",
+        "低饱和"
+      ],
+      "material": [
+        "岩石",
+        "积雪",
+        "冰层",
+        "风化"
+      ],
+      "mood": [
+        "庄严",
+        "肃穆",
+        "神圣",
+        "史诗感"
+      ],
+      "world_type": [
+        "悬山仙境"
+      ],
+      "architecture_relation": [
+        "建筑依崖展开",
+        "宫阙逐级退远"
+      ],
+      "narrative_action": [
+        "风雪跋涉",
+        "登阶朝觐"
+      ],
+      "view_position": [
+        "建立全景",
+        "人物视角仰望"
+      ],
+      "season_dynamic": [
+        "冬雪冰瀑",
+        "风向统一"
+      ]
+    },
+    "云上巨物": {
+      "time_weather": [
+        "日出",
+        "云雾"
+      ],
+      "environment": [
+        "云谷",
+        "岩台",
+        "瀑布"
+      ],
+      "scene": [
+        "宫城"
+      ],
+      "architecture": [
+        "唐宋风格",
+        "白玉平台",
+        "宫廊",
+        "亭阁"
+      ],
+      "subject": [
+        "太虚古琴"
+      ],
+      "character": [
+        "遥望",
+        "人物极小",
+        "月白浅蓝衣"
+      ],
+      "camera": [
+        "40mm",
+        "对岸远望",
+        "三分之四侧景"
+      ],
+      "composition": [
+        "五层空间",
+        "巨物嵌入环境"
+      ],
+      "lighting": [
+        "破云金光",
+        "金边",
+        "冷暖对比"
+      ],
+      "palette": [
+        "冷青灰",
+        "暖金",
+        "克制"
+      ],
+      "material": [
+        "岩石",
+        "青铜",
+        "风化",
+        "真实重量"
+      ],
+      "mood": [
+        "宏伟",
+        "神秘",
+        "不可思议",
+        "电影级"
+      ],
+      "world_type": [
+        "天界奇观"
+      ],
+      "architecture_relation": [
+        "主殿居中",
+        "远景宫阙半隐云中"
+      ],
+      "narrative_action": [
+        "观象",
+        "静立远望"
+      ],
+      "view_position": [
+        "远观全貌",
+        "隔云遥望"
+      ],
+      "season_dynamic": [
+        "云潮流向"
+      ]
+    }
+  },
+  "defaultNegative": {
+    "人物控制": [
+      "人物正脸",
+      "人物比例过大",
+      "拥挤人群",
+      "多余人物",
+      "畸形手指",
+      "肢体错位",
+      "人物漂浮"
+    ],
+    "建筑结构": [
+      "西式建筑",
+      "日式寺庙",
+      "建筑结构扭曲",
+      "桥梁断裂",
+      "穿模",
+      "透视错误",
+      "比例失衡"
+    ],
+    "风格媒介": [
+      "廉价游戏CG",
+      "塑料材质",
+      "动漫风",
+      "赛博朋克",
+      "蒸汽朋克",
+      "AI涂抹感",
+      "低清晰度"
+    ],
+    "光色效果": [
+      "霓虹",
+      "过度发光",
+      "高饱和",
+      "过曝"
+    ],
+    "地面化限制": [],
+    "输出污染": [
+      "文字",
+      "Logo",
+      "水印"
+    ]
+  },
+  "worldProfiles": {
+    "九重天宫": {
+      "prompt": "宫城位于人间云层之上，宫殿下方为无底云海，上方仍有高远天穹；云台、天阶与宫廊具有清晰承托关系。",
+      "defaultSelection": {
+        "celestial_altitude": [
+          "位于地面云层之上",
+          "人间大地完全不可见",
+          "整座宫城悬浮于云海",
+          "云海位于宫殿下方",
+          "多层云雾穿过宫殿台基",
+          "白玉天阶连接浮空宫阙",
+          "祥云绕柱并流过宫廊",
+          "薄金霞气笼罩层层宫阙"
+        ]
+      },
+      "negative": [
+        "普通地面建筑",
+        "宫殿坐落在平地",
+        "宫殿建在普通山顶",
+        "可见人间地面",
+        "云海只作为远景背景",
+        "建筑底部连接地面",
+        "普通山顶建筑",
+        "低海拔山城",
+        "地平线贴近建筑",
+        "普通山景旅游区",
+        "普通陆地道路",
+        "雾气只贴着地面"
+      ],
+      "enabledFields": [
+        "time_weather",
+        "season_dynamic",
+        "environment",
+        "scene",
+        "architecture",
+        "architecture_relation",
+        "subject",
+        "narrative_action",
+        "character",
+        "camera",
+        "view_position",
+        "composition",
+        "lighting",
+        "palette",
+        "material",
+        "mood",
+        "celestial_altitude"
+      ],
+      "recommendedFields": [
+        "architecture_relation",
+        "narrative_action",
+        "view_position"
+      ]
+    },
+    "悬山仙境": {
+      "prompt": "建筑顺应山势、岩台与峭壁展开，台阶、廊桥与瀑流具有连续的落点和承重关系；云雾在山谷与建筑之间流动。",
+      "defaultSelection": {},
+      "negative": [
+        "建筑无承托悬浮",
+        "普通旅游景区",
+        "人工景观摆拍"
+      ],
+      "enabledFields": [
+        "time_weather",
+        "season_dynamic",
+        "environment",
+        "scene",
+        "architecture",
+        "architecture_relation",
+        "subject",
+        "narrative_action",
+        "character",
+        "camera",
+        "view_position",
+        "composition",
+        "lighting",
+        "palette",
+        "material",
+        "mood"
+      ],
+      "recommendedFields": [
+        "season_dynamic",
+        "architecture_relation",
+        "narrative_action"
+      ]
+    },
+    "云海水境": {
+      "prompt": "宫苑临镜湖、天池或云上水面展开，水岸、倒影、舟行与建筑保持明确的空间对应，水面不吞没主体。",
+      "defaultSelection": {},
+      "negative": [
+        "水面穿模",
+        "错误倒影",
+        "现代游艇"
+      ],
+      "enabledFields": [
+        "time_weather",
+        "season_dynamic",
+        "environment",
+        "scene",
+        "architecture",
+        "architecture_relation",
+        "subject",
+        "narrative_action",
+        "character",
+        "camera",
+        "view_position",
+        "composition",
+        "lighting",
+        "palette",
+        "material",
+        "mood"
+      ],
+      "recommendedFields": [
+        "season_dynamic",
+        "view_position",
+        "narrative_action"
+      ]
+    },
+    "天界奇观": {
+      "prompt": "巨物嵌入宫城与云海环境，具备明确用途、材料、重量与承托关系；人物和宫阙共同提供尺度参照。",
+      "defaultSelection": {
+        "celestial_altitude": [
+          "位于地面云层之上",
+          "人间大地完全不可见",
+          "整座宫城悬浮于云海",
+          "云海位于宫殿下方",
+          "多层云雾穿过宫殿台基",
+          "白玉天阶连接浮空宫阙",
+          "祥云绕柱并流过宫廊",
+          "薄金霞气笼罩层层宫阙"
+        ]
+      },
+      "negative": [
+        "普通地面建筑",
+        "宫殿坐落在平地",
+        "宫殿建在普通山顶",
+        "可见人间地面",
+        "云海只作为远景背景",
+        "建筑底部连接地面",
+        "巨物漂浮无承托",
+        "玩具质感",
+        "博物馆陈列"
+      ],
+      "enabledFields": [
+        "time_weather",
+        "season_dynamic",
+        "environment",
+        "scene",
+        "architecture",
+        "architecture_relation",
+        "subject",
+        "narrative_action",
+        "character",
+        "camera",
+        "view_position",
+        "composition",
+        "lighting",
+        "palette",
+        "material",
+        "mood",
+        "celestial_altitude"
+      ],
+      "recommendedFields": [
+        "architecture_relation",
+        "narrative_action",
+        "view_position"
+      ]
+    },
+    "巨构天界": {
+      "prompt": "整个仙境采用三层尺度关系，并以无可比拟的尺度压迫产生神性，但必须遵循中国宫城的结构语法：前景先给出正常人可驻足、可触及的一处人尺度锚点，按场景功能选择无栏云台、临廊短阶、临水台、观象仪台、舟坞平台或园林古松；古松只用于山门与园林场景，不得成为默认意象，不使用断崖石堡。中景只留一片开阔云海或空阔宫台；远景只保留一座完整而非人尺度的主体宫城。该巨构必须由高台基、横向延展的层层重檐、巨型斗拱、连续巨柱与清晰云上轴线构成，占据画面至少三分之一、压住天际并在上方或侧方出画；其重量来自层叠檐口与台基的秩序，而非西式垂直石墙、教堂门洞或城堡尖塔。让前景人物与尺度锚点显得可怜而真实。巨构不贴近镜头，也不靠巨型栏杆或巨型家具显尺度。仙感必须极致干净：全画面只允许一座主体巨宫、一处人尺度前景和一片有明确风向的云海；采用白玉、青灰、深青与极少朱砂的收束色彩，纹样仅落在一处可读局部，禁止重复装饰、杂树、碎建筑、杂色和堆叠云团。薄云受风横向穿过高台与重檐下方，明暗、云层与空气不断轻微变化；云和风只让巨构若隐若现、留下回响，绝不削弱其压迫感。",
+      "defaultSelection": {
+        "celestial_altitude": [
+          "位于地面云层之上",
+          "人间大地完全不可见",
+          "整座宫城悬浮于云海",
+          "云海位于宫殿下方",
+          "祥云绕柱并流过宫廊"
+        ],
+        "architecture": ["宋式", "柱廊", "斗拱", "白玉道路"],
+        "architecture_relation": ["宫阙逐级退远", "远景宫阙半隐云中"],
+        "scene_mechanism": ["朝会外廊：通往主殿的静候空间", "人物由近处入口沿台道抵达远端节点", "巨檐、巨柱与台基连续相接，形成可行走的室外空间", "云气从柱间穿行并沿台道下方流出"],
+        "camera": ["24mm", "广角", "低机位"],
+        "view_position": ["廊下望远", "人物视角仰望"],
+        "composition": ["空间纵深", "引导线", "人物反衬建筑"],
+        "subject": ["正常人作为尺度参照"]
+      },
+      "negative": [
+        "普通地面建筑",
+        "宫殿坐落在平地",
+        "宫殿建在普通山顶",
+        "可见人间地面",
+        "云海只作为远景背景",
+        "建筑底部连接地面",
+        "西式建筑",
+        "哥特尖塔",
+        "城堡",
+        "岩石浮岛",
+        "瀑布",
+        "飘带",
+        "密集塔楼",
+        "完整宫殿全景",
+        "人类尺度亭阁",
+        "近景高栏杆",
+        "栏杆高过正常人",
+        "巨型栏杆作为尺度主体",
+        "镜头贴脸拍巨构",
+        "前景与远景没有尺度断层",
+        "远景巨构过小或只是装饰背景",
+        "巨构未压住天际",
+        "西式垂直石墙",
+        "教堂式门洞",
+        "城堡尖塔",
+        "断崖奇幻场景",
+        "杂树与碎建筑",
+        "重复纹样和多色装饰",
+        "堆叠云团",
+        "每个场景都放古松",
+        "把正常人缩成像素",
+        "全部构件装饰平均铺满画面",
+        "厚重云墙",
+        "人物排队",
+        "过曝",
+        "玩具质感"
+      ],
+      "enabledFields": [
+        "time_weather", "environment", "scene", "architecture", "architecture_relation", "scene_mechanism", "subject", "character", "camera", "view_position", "composition", "lighting", "palette", "material", "mood", "celestial_altitude"
+      ],
+      "recommendedFields": ["scene_mechanism", "architecture", "architecture_relation", "camera", "view_position", "composition"]
+    }
+  },
+  "promptStructure": {
+    "outputFormat": "labeled-sections",
+    "sections": [
+      {
+        "id": "specification",
+        "label": "成片规格",
+        "source": "specification",
+        "template": "{ratio}构图，{medium}",
+        "density": "core"
+      },
+      {
+        "id": "world",
+        "label": "世界设定",
+        "source": "world",
+        "template": "{world_type}。{world_prompt}",
+        "density": "core"
+      },
+      {
+        "id": "time_weather",
+        "label": "时间与天气",
+        "field": "time_weather",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "season_dynamic",
+        "label": "季节与自然动态",
+        "field": "season_dynamic",
+        "template": "{values}",
+        "density": "optional"
+      },
+      {
+        "id": "environment",
+        "label": "核心环境",
+        "field": "environment",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "celestial_altitude",
+        "label": "悬空与天宫空间",
+        "field": "celestial_altitude",
+        "template": "{values}",
+        "density": "optional"
+      },
+      {
+        "id": "scene",
+        "label": "核心场景",
+        "field": "scene",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "architecture",
+        "label": "建筑形制",
+        "field": "architecture",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "architecture_relation",
+        "label": "建筑空间关系",
+        "field": "architecture_relation",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "subject",
+        "label": "主体",
+        "field": "subject",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "scene_mechanism",
+        "label": "场景机制与空间因果",
+        "field": "scene_mechanism",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "narrative_action",
+        "label": "叙事动作",
+        "field": "narrative_action",
+        "template": "{values}",
+        "density": "optional"
+      },
+      {
+        "id": "character",
+        "label": "人物设计",
+        "field": "character",
+        "template": "{values}",
+        "density": "optional"
+      },
+      {
+        "id": "camera",
+        "label": "镜头与机位",
+        "field": "camera",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "view_position",
+        "label": "观看位置与景别",
+        "field": "view_position",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "composition",
+        "label": "构图与空间",
+        "field": "composition",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "lighting",
+        "label": "光线设计",
+        "field": "lighting",
+        "template": "{values}",
+        "density": "core"
+      },
+      {
+        "id": "palette",
+        "label": "色彩基调",
+        "field": "palette",
+        "template": "{values}",
+        "density": "optional"
+      },
+      {
+        "id": "material",
+        "label": "材质与细节",
+        "field": "material",
+        "template": "{values}",
+        "density": "optional"
+      },
+      {
+        "id": "mood",
+        "label": "氛围与成片感",
+        "field": "mood",
+        "template": "{values}",
+        "density": "optional"
+      }
+    ],
+    "richAppend": "画面具备清晰、洁净的空气透视：近景只在一个巨构锚点集中精细雕梁、斗拱、纹样与材质，中景保留可行走的单一路径，远景仅留巨大结构的局部与辽阔留白；所有门、栏、阶、舟均按数十米高仙人的使用尺度建立，正常人作为可读参照。薄云与光线遵循明确风向发生轻微变化；所有建筑、人物、巨物、云雾和水体共享统一的光源方向、风化程度、物理尺度与空间关系。",
+    "negativeLabel": "负面约束"
+  },
+  "correctionRules": {
+    "label": "系统修正稿",
+    "description": "保留随机原文作为创作记录；修正稿以世界类型的空间语法为最高优先级，压缩竞争元素并补齐尺度、路径与留白。",
+    "globalPrompt": "画面只保留一座不可替代的主体建筑、一处正常人可驻足的人尺度锚点和一条可读路径。近景只在一处集中精细雕梁、斗拱、纹样或材质；中景保留大面积空阔留白；云、雾、光和水只遵循一个明确风向与光源，不新增第二叙事主体。",
+    "globalNegative": [
+      "多个同等主体建筑",
+      "重复亭阁",
+      "密集栏杆",
+      "独立宫灯",
+      "码头设备",
+      "分布式建筑群",
+      "厚重云墙",
+      "满画面反射",
+      "全部构件装饰平均铺满画面"
+    ],
+    "limits": {
+      "time_weather": 2,
+      "season_dynamic": 1,
+      "environment": 1,
+      "celestial_altitude": 2,
+      "scene": 1,
+      "architecture": 2,
+      "architecture_relation": 1,
+      "scene_mechanism": 2,
+      "subject": 1,
+      "narrative_action": 1,
+      "character": 2,
+      "camera": 2,
+      "view_position": 1,
+      "composition": 2,
+      "lighting": 1,
+      "palette": 2,
+      "material": 1,
+      "mood": 2
+    },
+    "daytimeValues": ["晨光", "清晨", "日出", "黎明", "拂晓", "夕阳", "黄昏", "傍晚", "夕金"],
+    "nightValues": ["月夜", "满月"],
+    "daytimeBlockedLighting": ["星光", "月光", "银蓝月光"],
+    "nightBlockedLighting": ["晨光", "夕阳", "暮光", "暖金日出", "破云金光"],
+    "worldProfiles": {
+      "九重天宫": {
+        "prompt": "远景以一座横向延展的中国宫城为唯一主景；前景保留无栏云台或临廊短阶，人物与巨宫由单一台道、短阶或廊道连接。",
+        "blocked": {"environment": ["古松", "松林", "桃林", "竹林", "竹海"], "scene": ["云帆船", "仙舟"], "subject": ["云帆仙舟", "巨型宫灯", "三足宝鼎", "华盖", "天锚", "太虚古琴", "玉如意", "玉木织梭", "白玉折扇", "青铜天鼓"]}
+      },
+      "云海水境": {
+        "prompt": "水面只承担一处安静倒影；主体为一座横向巨型天门或天宫。人物、天门、廊桥三者中只保留人物与天门，路径改为一条宽阔、无栏、笔直的玉台道。",
+        "blocked": {"environment": ["岩台", "山岭", "山脊", "山峰", "山谷", "悬崖", "峭壁", "古松", "松林"], "scene": ["石桥", "廊桥", "长桥", "云帆船", "仙舟"], "architecture": ["栏杆"], "subject": ["云帆仙舟", "巨型宫灯", "三足宝鼎", "华盖", "天锚", "太虚古琴", "玉如意", "玉木织梭", "白玉折扇", "青铜天鼓"]}
+      },
+      "悬山仙境": {
+        "prompt": "建筑顺一处巨大岩台横向展开，巨檐与台基承担重量。古松只可作为远处山门的一株尺度锚点；藏书用途只以一面近处书壁或少量典籍表达。",
+        "blocked": {"scene": ["云帆船", "仙舟", "观象台"], "subject": ["云帆仙舟", "巨型宫灯", "三足宝鼎", "华盖", "天锚", "太虚古琴", "玉如意", "玉木织梭", "白玉折扇", "青铜天鼓"], "narrative_action": ["风雪跋涉", "穿越云桥", "沿崖而行", "穿行松林"]}
+      },
+      "天界奇观": {
+        "prompt": "巨物只作为宫城结构的一部分，不能额外成为第二主角；保持一座巨宫、一名人物与一条路径的尺度关系。",
+        "blocked": {"environment": ["古松", "松林", "桃林", "竹林", "竹海"], "scene": ["云帆船", "仙舟"]}
+      },
+      "巨构天界": {
+        "prompt": "远处仅保留一座压住天际、向上或侧方出画的横向巨型中国宫城；前景只留正常尺度人物与无栏玉台，云海只作为一片受风横向流动的留白。",
+        "blocked": {"environment": ["岩台", "山岭", "山脊", "山峰", "山谷", "悬崖", "峭壁", "古松", "松林", "桂树", "桃林", "竹林", "竹海"], "scene": ["云帆船", "仙舟", "石桥", "廊桥", "长桥", "码头"], "architecture_relation": ["建筑依崖展开"], "subject": ["云帆仙舟", "巨型宫灯", "三足宝鼎", "华盖", "天锚", "太虚古琴", "玉如意", "玉木织梭", "白玉折扇", "青铜天鼓", "仙岛"], "narrative_action": ["云舟抵达", "临水停舟", "穿越云桥", "沿崖而行", "穿行松林", "小型仪仗", "远景朝圣队列"], "lighting": ["星光", "金边", "银蓝月光", "月光"]}
+      }
+    }
+  },
+  "rules": {
+    "maxSelectedByField": {
+      "time_weather": 3,
+      "season_dynamic": 3,
+      "environment": 3,
+      "celestial_altitude": 6,
+      "architecture": 4,
+      "architecture_relation": 3,
+      "scene_mechanism": 5,
+      "narrative_action": 2,
+      "character": 3,
+      "camera": 3,
+      "view_position": 2,
+      "composition": 3,
+      "lighting": 3,
+      "palette": 3,
+      "material": 4,
+      "mood": 3
+    },
+    "mutuallyExclusive": {
+      "time_weather": [
+        [
+          "晨光",
+          "清晨",
+          "日出",
+          "黎明",
+          "拂晓",
+          "夕阳",
+          "黄昏",
+          "傍晚",
+          "夕金"
+        ],
+        [
+          "月夜",
+          "满月"
+        ]
+      ],
+      "season_dynamic": [
+        [
+          "春雾落花",
+          "夏雨云瀑",
+          "秋风金叶",
+          "冬雪冰瀑"
+        ]
+      ]
+    },
+    "crossFieldExclusions": [
+      {
+        "when": {
+          "field": "time_weather",
+          "values": [
+            "月夜",
+            "满月"
+          ]
+        },
+        "clear": {
+          "lighting": [
+            "晨光",
+            "夕阳",
+            "暮光",
+            "暖金日出",
+            "破云金光"
+          ]
+        }
+      },
+      {
+        "when": {
+          "field": "time_weather",
+          "values": [
+            "晨光",
+            "清晨",
+            "日出",
+            "黎明",
+            "拂晓"
+          ]
+        },
+        "clear": {
+          "lighting": [
+            "月光",
+            "银蓝月光",
+            "星光"
+          ]
+        }
+      }
+    ],
+    "notes": [
+      "同一字段优先选择互补词，避免同一画面出现相互矛盾的时间、季节和光线。",
+      "世界类型负责默认空间逻辑；其 recommendedFields 用于词库编辑与后续界面引导。"
+    ]
+  }
+}

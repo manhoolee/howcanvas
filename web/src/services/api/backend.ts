@@ -128,7 +128,7 @@ export type AdminAiChannel = {
     id: string;
     name: string;
     baseUrl: string;
-    apiFormat: "openai" | "gemini" | "grok-video-v2";
+    apiFormat: "openai" | "gemini" | "grok-video-v2" | "minimax-h3";
     models: ServerChannelModel[];
     hasKey: boolean;
     apiKeyMasked: string;

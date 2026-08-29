@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ICV TA&K Global Future Industry Index (GFII) 2025 报告原文阅读页。">
+  <title>Global Future Industry Index (GFII) 2025 | Hoosland Course</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f6f2e8;
+      --muted: #a9acb7;
+      --line: rgba(255,255,255,0.14);
+      --accent: #ffbf00;
+      --panel: #12141a;
+      --canvas: #090a0e;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    body {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      padding: 24px clamp(20px, 4vw, 64px);
+      border-bottom: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 72% -80%, rgba(98,104,255,0.38), transparent 52%),
+        linear-gradient(120deg, #08090d, #15121d 70%, #090a0e);
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 980px;
+      font-size: clamp(24px, 3vw, 46px);
+      line-height: 1.06;
+      letter-spacing: -0.025em;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .action {
+      display: inline-flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 0 15px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      background: rgba(255,255,255,0.06);
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .action:hover { background: rgba(255,255,255,0.12); }
+    .action.primary { border-color: var(--accent); background: var(--accent); color: #141414; }
+    .action.primary:hover { background: #ffd24b; }
+
+    main {
+      min-height: 0;
+      padding: 16px;
+      background: #202127;
+    }
+
+    iframe {
+      display: block;
+      width: 100%;
+      height: calc(100vh - 151px);
+      min-height: 620px;
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 8px;
+      background: #35363b;
+    }
+
+    .fallback {
+      margin: 12px auto 0;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .fallback a { color: var(--ink); }
+
+    @media (max-width: 760px) {
+      header { grid-template-columns: 1fr; align-items: start; }
+      .actions { justify-content: flex-start; }
+      main { padding: 8px; }
+      iframe { height: calc(100vh - 236px); min-height: 520px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">Hoosland Course · 第 02 篇</p>
+      <h1>Global Future Industry Index (GFII) 2025</h1>
+      <p class="meta">
+        <span>ICV TA&amp;K</span>
+        <span>2026-02</span>
+        <span>95 页</span>
+        <span>英文原文</span>
+      </p>
+    </div>
+    <nav class="actions" aria-label="文章操作">
+      <a class="action" href="../../index.html#s1">← 上一篇</a>
+      <a class="action primary" href="./report.pdf" target="_blank" rel="noopener">在新窗口打开 PDF</a>
+      <a class="action" href="./report.pdf" download>下载原文</a>
+    </nav>
+  </header>
+
+  <main>
+    <iframe src="./report.pdf#view=FitH" title="Global Future Industry Index (GFII) 2025 PDF 阅读器"></iframe>
+    <p class="fallback">如果浏览器未显示文档，请<a href="./report.pdf" target="_blank" rel="noopener">直接打开 PDF</a>。</p>
+  </main>
+</body>
+</html>

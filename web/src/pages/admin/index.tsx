@@ -488,7 +488,7 @@ type ChannelFormValues = {
     name: string;
     baseUrl: string;
     apiKey?: string;
-    apiFormat: "openai" | "gemini" | "grok-video-v2";
+    apiFormat: "openai" | "gemini" | "grok-video-v2" | "minimax-h3";
     imageModels: string[];
     videoModels: string[];
     audioModels: string[];
@@ -572,7 +572,7 @@ function ChannelsManagerCard({ channels, onChanged }: { channels: AdminAiChannel
     const columns: ColumnsType<AdminAiChannel> = [
         { title: "名称", dataIndex: "name", width: 140, render: (v: string) => <span className="font-medium">{v}</span> },
         { title: "Base URL", dataIndex: "baseUrl", render: (v: string) => <code className="text-xs">{v}</code> },
-        { title: "格式", dataIndex: "apiFormat", width: 120, render: (v: string) => <Tag className="!m-0">{v === "gemini" ? "Gemini" : v === "grok-video-v2" ? "Grok V2" : "OpenAI"}</Tag> },
+        { title: "格式", dataIndex: "apiFormat", width: 120, render: (v: string) => <Tag className="!m-0">{v === "gemini" ? "Gemini" : v === "grok-video-v2" ? "Grok V2" : v === "minimax-h3" ? "MiniMax H3" : "OpenAI"}</Tag> },
         { title: "API Key", dataIndex: "apiKeyMasked", width: 140, render: (v: string) => <code className="text-xs">{v || "未设置"}</code> },
         { title: "模型数", key: "models", width: 80, render: (_, r) => <span className="tabular-nums">{r.models.length}</span> },
         {
@@ -618,6 +618,7 @@ function ChannelsManagerCard({ channels, onChanged }: { channels: AdminAiChannel
                                     { value: "openai", label: "OpenAI 兼容" },
                                     { value: "gemini", label: "Gemini" },
                                     { value: "grok-video-v2", label: "Grok Video V2（独立渠道）" },
+                                    { value: "minimax-h3", label: "MiniMax H3（独立渠道）" },
                                 ]}
                             />
                         </Form.Item>

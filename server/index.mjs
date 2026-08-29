@@ -312,14 +312,21 @@ function normalizeChannelModels(models) {
 
 function normalizeChannelApiFormat(value) {
     const format = String(value || "").trim();
-    return format === "gemini" || format === "grok-video-v2" ? format : "openai";
+    return format === "gemini" || format === "grok-video-v2" || format === "minimax-h3" ? format : "openai";
 }
 
 function validateChannelProtocol(apiFormat, models) {
-    if (apiFormat !== "grok-video-v2") return "";
-    return models.length === 1 && models[0].name === "grok-video-3" && models[0].capability === "video"
-        ? ""
-        : "Grok Video V2 渠道只能配置一个 grok-video-3 视频模型";
+    if (apiFormat === "grok-video-v2") {
+        return models.length === 1 && models[0].name === "grok-video-3" && models[0].capability === "video"
+            ? ""
+            : "Grok Video V2 渠道只能配置一个 grok-video-3 视频模型";
+    }
+    if (apiFormat === "minimax-h3") {
+        return models.length === 1 && models[0].name === "MiniMax-H3" && models[0].capability === "video"
+            ? ""
+            : "MiniMax H3 渠道只能配置一个 MiniMax-H3 视频模型";
+    }
+    return "";
 }
 
 // ---------- 口令与令牌 ----------
@@ -529,6 +536,24 @@ function rateLimit({ max, name }) {
     };
 }
 
+const aiProxyRateLimit = rateLimit({ max: 60, name: "ai" });
+const miniMaxH3QueryRateLimit = rateLimit({ max: 240, name: "minimax-h3-query" });
+
+function aiProxyRateLimitByRequest(req, res, next) {
+    const pathname = new URL(req.url, "http://localhost").pathname;
+    // Only polling a submitted H3 task gets its own, still bounded bucket. Creation
+    // and every other AI request retain the stricter general protection above.
+    if (/^\/(?:[A-Za-z0-9_-]+\/)?v2\/query\/video_generation\/[A-Za-z0-9_-]+$/.test(pathname)) {
+        return miniMaxH3QueryRateLimit(req, res, next);
+    }
+    return aiProxyRateLimit(req, res, next);
+}
+
+app.post("/api/landing/visits", rateLimit({ max: 30, name: "landing-visit" }), (_req, res) => {
+    const visits = database.incrementSiteCounter("hoosland-home", 1000);
+    res.status(201).json({ visits });
+});
+
 function sessionToken(user, session) {
     return sign({ id: user.id, ver: user.tokenVersion || 0, sid: session.sessionId, sver: session.version, exp: Date.now() + TOKEN_TTL_MS });
 }
@@ -609,6 +634,8 @@ function aiPathAllowed(forwardPath, capability, method) {
             ["GET", /^\/(?:v1\/)?videos\/[A-Za-z0-9._-]+(?:\/content)?$/],
             ["POST", /^\/v2\/videos\/generations$/],
             ["GET", /^\/v2\/videos\/generations\/[A-Za-z0-9%:._-]+$/],
+            ["POST", /^\/v2\/video_generation$/],
+            ["GET", /^\/v2\/query\/video_generation\/[A-Za-z0-9_-]+$/],
             ["POST", /^\/(?:v1\/)?contents\/generations\/tasks$/],
             ["GET", /^\/(?:v1\/)?contents\/generations\/tasks\/[A-Za-z0-9._-]+$/],
         ],
@@ -625,7 +652,10 @@ function channelProtocolAllowsPath(channel, forwardPath, capability) {
     if (capability !== "video") return true;
     const pathname = new URL(forwardPath, "http://local").pathname;
     const isGrokVideoV2Path = /^\/v2\/videos\/generations(?:\/|$)/.test(pathname);
-    return channel.apiFormat === "grok-video-v2" ? isGrokVideoV2Path : !isGrokVideoV2Path;
+    const isMiniMaxH3Path = /^\/v2\/(?:video_generation|query\/video_generation\/[A-Za-z0-9_-]+)$/.test(pathname);
+    if (channel.apiFormat === "grok-video-v2") return isGrokVideoV2Path;
+    if (channel.apiFormat === "minimax-h3") return isMiniMaxH3Path;
+    return !isGrokVideoV2Path && !isMiniMaxH3Path;
 }
 
 function multipartModel(body, contentType) {
@@ -1202,7 +1232,7 @@ app.post("/api/image-tasks/:taskId/cancel", auth, (req, res) => {
 // ---------- AI 接口代理（按渠道路由）----------
 // 前端不持有真实 API Key：请求发到 /api/ai/<渠道id>/*，由服务器查出该渠道的密钥后转发。
 // 必须注册在 express.json 之前，保证请求体原样透传（JSON / multipart / 二进制均可）。
-app.use("/api/ai", auth, rateLimit({ max: 60, name: "ai" }), express.raw({ type: "*/*", limit: MAX_AI_REQUEST_BYTES }), async (req, res) => {
+app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", limit: MAX_AI_REQUEST_BYTES }), async (req, res) => {
     // 路径形如 /<channelId>/v1...；仅兼容旧路径 /v1...，未知渠道不再静默回退。
     let forwardPath = req.url;
     let channel = null;
@@ -1400,7 +1430,8 @@ app.get("/api/media/proxy", auth, async (req, res) => {
     let target;
     try { target = new URL(rawUrl); } catch { return res.status(400).json({ error: "媒体地址无效" }); }
     const host = target.hostname.toLowerCase();
-    if (target.protocol !== "https:" || !/(?:\.volces\.com|\.aiproxy\.vip|api\.seedance\.nz)$/.test(host)) {
+    const allowed = /(?:\.volces\.com|\.aiproxy\.vip|api\.seedance\.nz)$/.test(host) || host === "algeng-video-infer.oss-cn-shanghai.aliyuncs.com";
+    if (target.protocol !== "https:" || !allowed) {
         return res.status(403).json({ error: "媒体地址不在允许列表" });
     }
     try {

@@ -5,6 +5,7 @@ import { dataUrlToFile } from "@/lib/image-utils";
 import { getMediaBlob, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import { boolConfig, buildSeedancePromptText, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, normalizeSeedanceResolution, seedanceVideoReferenceError, SEEDANCE_REFERENCE_LIMITS } from "@/lib/seedance-video";
+import { isMiniMaxH3VideoConfig, normalizeMiniMaxH3Duration, normalizeMiniMaxH3Ratio, normalizeMiniMaxH3Resolution } from "@/lib/minimax-h3-video";
 import { buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, serverProxyHeaders, type AiConfig } from "@/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
 import { chargeOrThrow, withCharge } from "@/lib/billing";
@@ -33,12 +34,18 @@ type GrokVideoTask = {
     data?: VideoResponse | null;
     video_url?: string;
 };
+type MiniMaxH3Task = {
+    id?: string;
+    status?: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+    content?: { url?: string } | null;
+    error?: { code?: string; message?: string } | null;
+};
 type ApiEnvelope<T> = T | { code?: number | string; data?: T | null; msg?: string; message?: string; error?: { message?: string } };
 type RequestOptions = { signal?: AbortSignal; skipCharge?: boolean; onTaskSubmitted?: (task: VideoGenerationTask) => void };
 
 export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string };
-export type VideoGenerationTask = { id: string; provider: "openai" | "seedance" | "grok-v2" | "plugin"; model: string };
-export type VideoGenerationTaskState = { status: "pending" } | { status: "completed"; result: VideoGenerationResult } | { status: "failed"; error: string };
+export type VideoGenerationTask = { id: string; provider: "openai" | "seedance" | "grok-v2" | "minimax-h3" | "plugin"; model: string };
+export type VideoGenerationTaskState = { status: "pending"; retryAfterMs?: number } | { status: "completed"; result: VideoGenerationResult } | { status: "failed"; error: string };
 
 /** Results for scripted (plugin) video models, which run their own create+poll in one shot at task creation. */
 const pluginVideoResults = new Map<string, VideoGenerationResult>();
@@ -65,14 +72,16 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
 
 /** 继续查询一个已经创建的任务，不创建新任务，也不再次扣费。 */
 export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: Pick<RequestOptions, "signal">): Promise<VideoGenerationResult> {
-    const delayMs = task.provider === "seedance" ? 5000 : 2500;
+    // H3 tasks may take several minutes.  A 5-second poll would exhaust the server's
+    // shared AI-proxy allowance before the task completes, so keep it deliberately low.
+    const delayMs = task.provider === "minimax-h3" ? 20_000 : task.provider === "seedance" ? 5000 : 2500;
     for (let attempt = 0; attempt < 120; attempt += 1) {
         if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
         const state = await pollVideoGenerationTask(config, task, options);
         if (state.status === "completed") return state.result;
         if (state.status === "failed") throw new Error(state.error);
-        if (attempt === 119) throw new Error(`${task.provider === "seedance" ? "Seedance " : ""}视频生成超时，可稍后再次取回结果`);
-        await delay(delayMs, options?.signal);
+        if (attempt === 119) throw new Error(`${task.provider === "seedance" ? "Seedance " : task.provider === "minimax-h3" ? "MiniMax H3 " : ""}视频生成超时，可稍后再次取回结果`);
+        await delay(Math.max(delayMs, state.retryAfterMs || 0), options?.signal);
     }
     throw new Error("视频生成超时，可稍后再次取回结果");
 }
@@ -88,6 +97,7 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
         if (videoReferences.length || audioReferences.length) throw new Error("Grok Video V2 仅支持参考图片，不支持参考视频或参考音频");
         return createGrokVideoTask(requestConfig, selectedModel, prompt, references, options);
     }
+    if (isMiniMaxH3VideoConfig(requestConfig)) return createMiniMaxH3Task(requestConfig, selectedModel, prompt, references, videoReferences, audioReferences, options);
     if (isSeedanceVideoConfig(requestConfig)) return createSeedanceTask(requestConfig, selectedModel, prompt, references, videoReferences, audioReferences, options);
     // T8 Grok Video 3 接收 JSON 任务参数；Seedance 仍走上面的专用协议。
     if (modelOptionName(selectedModel).toLowerCase() === "grok-video-3") {
@@ -107,6 +117,7 @@ export async function pollVideoGenerationTask(config: AiConfig, task: VideoGener
     const requestConfig = resolveModelRequestConfig(config, task.model);
     assertVideoConfig(requestConfig, requestConfig.model);
     if (task.provider === "grok-v2") return pollGrokVideoTask(requestConfig, task, options);
+    if (task.provider === "minimax-h3") return pollMiniMaxH3Task(requestConfig, task, options);
     return task.provider === "seedance" ? pollSeedanceTask(requestConfig, task, options) : pollOpenAIVideoTask(requestConfig, task, options);
 }
 
@@ -325,6 +336,58 @@ async function pollGrokVideoTask(config: AiConfig, task: VideoGenerationTask, op
     }
 }
 
+async function createMiniMaxH3Task(config: AiConfig, model: string, prompt: string, references: ReferenceImage[], videoReferences: ReferenceVideo[], audioReferences: ReferenceAudio[], options?: RequestOptions): Promise<VideoGenerationTask> {
+    const text = prompt.trim();
+    if (!text) throw new Error("MiniMax H3 必须填写视频提示词");
+    const hasMultimodalReferences = videoReferences.length > 0 || audioReferences.length > 0;
+    if (!hasMultimodalReferences && references.length > 2) throw new Error("MiniMax H3 首尾帧最多支持 2 张图片；如需多张参考图，请同时添加参考视频或参考音频");
+    const content: Array<Record<string, unknown>> = [{ type: "text", text }];
+    for (const [index, image] of references.entries()) {
+        const url = await imageToDataUrl(image);
+        if (!url) throw new Error("MiniMax H3 参考图读取失败，请重新连接图片节点");
+        content.push({ type: "image_url", image_url: { url }, role: hasMultimodalReferences ? "reference_image" : index === 0 ? "first_frame" : "last_frame" });
+    }
+    for (const video of videoReferences) content.push({ type: "video_url", video_url: { url: await resolveMiniMaxH3MediaUrl(video, "视频") }, role: "reference_video" });
+    for (const audio of audioReferences) content.push({ type: "audio_url", audio_url: { url: await resolveMiniMaxH3MediaUrl(audio, "音频") }, role: "reference_audio" });
+    const ratio = references.length && !hasMultimodalReferences ? "adaptive" : normalizeMiniMaxH3Ratio(config.size);
+    try {
+        const response = await axios.post<{ task_id?: string }>(
+            miniMaxH3ApiUrl(config),
+            {
+                model: modelOptionName(model),
+                content,
+                resolution: normalizeMiniMaxH3Resolution(config.vquality),
+                duration: normalizeMiniMaxH3Duration(config.videoSeconds),
+                ratio,
+                aigc_watermark: boolConfig(config.videoWatermark, false),
+            },
+            { headers: aiHeaders(config, "application/json"), signal: options?.signal },
+        );
+        if (!response.data?.task_id) throw new Error("MiniMax H3 接口没有返回 task_id");
+        return { id: response.data.task_id, provider: "minimax-h3", model };
+    } catch (error) {
+        throw new Error(readAxiosError(error, "MiniMax H3 视频任务创建失败"));
+    }
+}
+
+async function pollMiniMaxH3Task(config: AiConfig, task: VideoGenerationTask, options?: RequestOptions): Promise<VideoGenerationTaskState> {
+    try {
+        const response = await axios.get<{ task?: MiniMaxH3Task }>(miniMaxH3ApiUrl(config, task.id), { headers: aiHeaders(config), signal: options?.signal });
+        const state = response.data?.task;
+        if (!state) throw new Error("MiniMax H3 接口没有返回任务");
+        const url = videoResultUrl(state);
+        if (state.status === "succeeded") return url ? { status: "completed", result: await videoResultFromUrl(url, options) } : { status: "failed", error: "MiniMax H3 任务成功但没有返回视频 URL" };
+        if (state.status === "failed" || state.status === "cancelled") return { status: "failed", error: state.error?.message || "MiniMax H3 视频生成失败" };
+        return { status: "pending" };
+    } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 429) {
+            const seconds = Number(error.response.headers?.["retry-after"]);
+            return { status: "pending", retryAfterMs: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 60_000 };
+        }
+        throw new Error(readAxiosError(error, "MiniMax H3 视频任务查询失败"));
+    }
+}
+
 function isSeedanceApi(config: AiConfig) {
     return config.baseUrl.toLowerCase().includes("api.seedance.nz");
 }
@@ -410,6 +473,8 @@ async function resolveSeedanceAudioUrl(audio: ReferenceAudio) {
 }
 
 async function videoResultFromUrl(url: string, options?: RequestOptions): Promise<VideoGenerationResult> {
+    // 对象存储签名 URL 通常不提供 CORS；交给同源代理下载并保存，避免浏览器先发起一次必然失败的跨域请求。
+    if (/^https?:\/\//i.test(url)) return { url, mimeType: "video/mp4" };
     try {
         const response = await axios.get<Blob>(url, { responseType: "blob", signal: options?.signal });
         await assertVideoBlob(response.data);
@@ -464,8 +529,21 @@ function unwrapEnvelope<T>(payload: ApiEnvelope<T>, emptyMessage: string): T {
     return payload as T;
 }
 
+async function resolveMiniMaxH3MediaUrl(media: ReferenceVideo | ReferenceAudio, label: string) {
+    if (isPublicMediaUrl(media.url)) return media.url;
+    let blob: Blob | null = media.storageKey ? await getMediaBlob(media.storageKey) : null;
+    if (!blob && media.url?.startsWith("blob:")) blob = await (await fetch(media.url)).blob();
+    if (!blob) throw new Error(`MiniMax H3 参考${label}必须是公网 URL 或本地已保存的文件`);
+    return blobToDataUrl(blob);
+}
+
 function isGrokVideoV2Config(config: AiConfig) {
     return config.apiFormat === "grok-video-v2" && modelOptionName(config.model).toLowerCase() === "grok-video-3";
+}
+
+function miniMaxH3ApiUrl(config: AiConfig, taskId = "") {
+    const base = config.baseUrl.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+    return `${base}${taskId ? `/v2/query/video_generation/${encodeURIComponent(taskId)}` : "/v2/video_generation"}`;
 }
 
 function grokVideoApiUrl(config: AiConfig, taskId = "") {

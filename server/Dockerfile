@@ -1,7 +1,7 @@
 FROM node:22-bookworm-slim
 
 WORKDIR /app
-RUN apt-get update \
+RUN apt-get -o Acquire::ForceIPv4=true update \
     && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY server/requirements-grok.txt ./

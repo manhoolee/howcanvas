@@ -147,6 +147,12 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
     const config = await request(baseUrl, "/api/auth/config");
     assert.equal(config.status, 200);
     assert.equal(config.data.registrationEnabled, false);
+    const firstVisit = await request(baseUrl, "/api/landing/visits", { method: "POST" });
+    assert.equal(firstVisit.status, 201);
+    assert.equal(firstVisit.data.visits, 1001);
+    const secondVisit = await request(baseUrl, "/api/landing/visits", { method: "POST" });
+    assert.equal(secondVisit.status, 201);
+    assert.equal(secondVisit.data.visits, 1002);
     const closedRegistration = await request(baseUrl, "/api/auth/register", { body: JSON.stringify({ username: "visitor", password: "very-strong-password" }) });
     assert.equal(closedRegistration.status, 403);
 
