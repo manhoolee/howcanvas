@@ -43,15 +43,29 @@ The production server keeps its existing bind-mounted `/opt/infinite-canvas/serv
 2. archive `.env.deploy`, Compose files, Nginx configuration, and the current deployed commit;
 3. upload a Git archive of the exact GitHub commit to a staging directory;
 4. verify the staged tracked-file manifest before overlaying source files;
-5. run `docker compose -f docker-compose.deploy.yml config`;
-6. rebuild and recreate only the services affected by the release;
-7. verify container health, `/api/health`, frontend HTML, and authenticated login.
+5. verify that the staged production gateway still contains the server-only
+   Visual Workbench markers (`visual_workbench_message_rate_key`,
+   `/tools/visual-workbench/`, and `172.19.0.1:13092/`); stop before overlaying
+   if any marker is missing;
+6. run `docker compose -f docker-compose.deploy.yml config` and back up the
+   gateway configuration before applying it;
+7. rebuild and recreate only the services affected by the release;
+8. verify container health, `/api/health`, frontend HTML, and authenticated login.
 
 Rollback restores the previous tracked-file archive and configuration, rebuilds the affected services, and restores data only when the new version changed or damaged persistent state.
 
 ## 5. Production-Specific Topology
 
 The public default Compose is the portable installation path. The production server continues to use `docker-compose.deploy.yml` because it also serves the Hoosland landing site and domain-specific gateway routes. Production-specific routing must not replace the portable default Compose.
+
+The production server also hosts the Visual Workbench outside Docker. The
+`hoosland-visual-workbench.service` process listens on `127.0.0.1:3092`, and
+`hoosland-visual-workbench-gateway.service` exposes host port `13092`. The
+`ins.hoosland.com/tools/visual-workbench/` route in `nginx.deploy.conf` is the
+only public entry point for that service; it is not present in the portable
+Compose stack or the HowCanvas application source. Keep this route when
+deploying Canvas Agent changes and recreate only `gateway` after an Nginx
+change.
 
 The production deployment directory is not converted into a Git worktree. Alignment is proven by:
 
@@ -68,5 +82,19 @@ Each release passes these gates in order:
 2. **Package gate**: Compose parses; environment examples contain every required setting; frontend and backend source checks pass; an isolated Docker stack builds and passes health, login, restart, and persistence checks.
 3. **Documentation gate**: README and detailed docs use only commands exercised by the package gate; referenced files exist; obsolete SSH-only clone and frontend-only Docker instructions are absent.
 4. **Alignment gate**: changes are committed and pushed, GitHub checks pass, the exact commit is deployed, all production services are healthy, and local/GitHub/server commit and tracked-file manifests match.
+
+For the Hoosland production overlay, the alignment gate also requires:
+
+```bash
+docker compose -f docker-compose.deploy.yml exec -T gateway nginx -t
+curl -fsSI http://ins.hoosland.com/tools/visual-workbench
+curl -fsS http://ins.hoosland.com/tools/visual-workbench/ | head
+curl -fsS http://ins.hoosland.com/tools/visual-workbench/api/health/ready
+curl -fsS http://can.hoosland.com/api/health
+```
+
+The first Visual Workbench request must return `308` to the slash-suffixed
+path, the page must return HTML, and the readiness and Canvas health checks
+must succeed before the deployment is reported complete.
 
 Failure at any gate returns work to that same gate. No later gate may be reported complete until the current gate passes.

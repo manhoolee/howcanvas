@@ -13,7 +13,8 @@ HowCanvas（浩瀚画布）是一个 React + Vite 的图片创作工作台，包
 - 浏览器缓存与服务器数据同步；
 - 本地 Canvas Agent、MCP 和插件系统。
 
-生产部署由三个容器组成：
+公共 Docker 部署由三个容器组成；Hoosland 生产环境另外运行 landing、ins
+容器，并在宿主机上运行独立的视觉工作台服务：
 
 ```text
 浏览器
@@ -24,6 +25,12 @@ gateway (nginx)
                          ↓
                     server-data
 ```
+
+Hoosland 生产环境的 `ins.hoosland.com/tools/visual-workbench/` 由
+`nginx.deploy.conf` 代理到宿主机 `13092`；该端口由
+`hoosland-visual-workbench-gateway.service` 转发到
+`127.0.0.1:3092` 的 `hoosland-visual-workbench.service`。它不属于
+HowCanvas Compose 或源码归档，部署画布 Agent 时必须保留这条 server-only 路由。
 
 ## 2. 目录结构
 
@@ -333,6 +340,19 @@ curl -I http://127.0.0.1/
 
 ```bash
 docker compose -f docker-compose.deploy.yml up -d --force-recreate gateway
+```
+
+覆盖生产网关配置前，确认 `nginx.deploy.conf` 同时包含
+`visual_workbench_message_rate_key`、`/tools/visual-workbench/` 和
+`172.19.0.1:13092/` 三个标记；缺少任一标记都应停止部署。重建 gateway
+后执行：
+
+```bash
+docker compose -f docker-compose.deploy.yml exec -T gateway nginx -t
+curl -fsSI http://ins.hoosland.com/tools/visual-workbench
+curl -fsS http://ins.hoosland.com/tools/visual-workbench/ | head
+curl -fsS http://ins.hoosland.com/tools/visual-workbench/api/health/ready
+curl -fsS http://can.hoosland.com/api/health
 ```
 
 ### 11.3 数据备份
