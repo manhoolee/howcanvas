@@ -18,6 +18,8 @@ export type CanvasAgentChatMessage = {
     attachments?: CanvasAgentChatAttachment[];
     /** Present while the message is actively streaming; cleared on completion. */
     streamId?: string;
+    /** The text is an incremental delta and should be merged with the previous chunk. */
+    streamDelta?: boolean;
 };
 
 const WORKING_TEXT = "working...";

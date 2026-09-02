@@ -60,16 +60,26 @@ type ResponseApiToolDefinition = {
 type ResponseApiOutputItem =
     | { type?: "message"; content?: Array<{ type?: string; text?: string }> }
     | { type?: "function_call"; id?: string; call_id?: string; name?: string; arguments?: string };
+type ChatCompletionChoice = {
+    message?: { content?: unknown; tool_calls?: unknown; toolCalls?: unknown };
+    delta?: { content?: unknown; tool_calls?: unknown; toolCalls?: unknown };
+};
 type ResponseApiPayload = {
     id?: string;
     output?: ResponseApiOutputItem[];
-    output_text?: string;
+    output_text?: unknown;
+    choices?: ChatCompletionChoice[];
+    content?: unknown;
+    tool_calls?: unknown;
+    toolCalls?: unknown;
     error?: { message?: string } | string;
     message?: string;
     code?: number;
     msg?: string;
 };
-type ResponseStreamState = { buffer: string; text: string; payload?: ResponseApiPayload; error?: string };
+type ChatStreamToolCall = { id: string; name: string; arguments: string };
+type ResponseStreamToolCall = { id: string; name: string; arguments: string };
+type ResponseStreamState = { buffer: string; text: string; payload?: ResponseApiPayload; error?: string; chatToolCalls: Map<number, ChatStreamToolCall>; responseToolCalls: Map<string, ResponseStreamToolCall> };
 
 type ImageApiResponse = {
     data?: Array<Record<string, unknown>>;
@@ -397,23 +407,57 @@ function toResponseTool(tool: ResponseFunctionTool): ResponseApiToolDefinition {
     };
 }
 
+function textContent(value: unknown): string {
+    if (typeof value === "string") return value;
+    if (isRecord(value)) {
+        return stringValue(value.text) || textContent(value.content) || textContent(value.output_text);
+    }
+    if (!Array.isArray(value)) return "";
+    return value.map(textContent).join("");
+}
+
+function chatToolCalls(value: unknown): ResponseToolCall[] {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((item) => {
+            if (!isRecord(item)) return null;
+            const fn = isRecord(item.function) ? item.function : item;
+            const id = stringValue(item.id) || stringValue(item.call_id);
+            const name = stringValue(fn.name);
+            const args = stringValue(fn.arguments) || (fn.arguments == null ? "{}" : JSON.stringify(fn.arguments));
+            return id && name ? { id, type: "function" as const, function: { name, arguments: args } } : null;
+        })
+        .filter((item): item is ResponseToolCall => Boolean(item));
+}
+
 function parseToolResponse(payload: ResponseApiPayload): ToolResponseResult {
     const output = payload.output || [];
     const content =
-        payload.output_text ||
+        textContent(payload.output_text) ||
         output
             .flatMap((item) => (item.type === "message" ? item.content || [] : []))
-            .map((item) => item.text || "")
+            .map((item) => textContent(item))
             .join("");
-    const toolCalls = output
+    const responseToolCalls = output
         .filter((item): item is Extract<ResponseApiOutputItem, { type?: "function_call" }> => item.type === "function_call")
         .map((item) => ({
             id: item.call_id || item.id || "",
             type: "function" as const,
-            function: { name: item.name || "", arguments: item.arguments || "{}" },
+            function: { name: item.name || "", arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments || {}) },
         }))
         .filter((item) => item.id && item.function.name);
-    return { content, toolCalls };
+    if (content || responseToolCalls.length) return { content, toolCalls: responseToolCalls };
+
+    const choice = payload.choices?.[0];
+    const message = choice?.message || choice?.delta;
+    const chatContent = textContent(message?.content) || textContent(payload.content);
+    const toolCalls = chatToolCalls(message?.tool_calls ?? message?.toolCalls ?? payload.tool_calls ?? payload.toolCalls);
+    return { content: chatContent, toolCalls };
+}
+
+function ensureToolResponse(result: ToolResponseResult) {
+    if (!result.content && !result.toolCalls.length) throw new Error("AI 响应未包含文本或工具调用，请检查模型协议与权限配置");
+    return result;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -458,15 +502,45 @@ async function readFetchError(response: Response, fallback: string) {
     }
 }
 
+function isEventStreamResponse(response: Response) {
+    return (response.headers.get("content-type") || "").toLowerCase().includes("text/event-stream");
+}
+
+async function readJsonResponse<T>(response: Response, fallback: T): Promise<T> {
+    return parseJsonText(await response.text(), fallback);
+}
+
+function parseJsonText<T>(text: string, fallback: T): T {
+    if (!text.trim()) return fallback;
+    try {
+        return JSON.parse(text) as T;
+    } catch {
+        throw new Error(`AI 响应格式无效：${text.slice(0, 300)}`);
+    }
+}
+
 function consumeResponseStreamBlock(block: string, state: ResponseStreamState, onDelta?: (text: string) => void) {
+    const raw = block.trim();
     const data = block
         .split(/\r?\n/)
         .filter((line) => line.startsWith("data:"))
         .map((line) => line.slice(5).replace(/^ /, ""))
         .join("\n")
         .trim();
-    if (!data || data === "[DONE]") return;
-    const event = JSON.parse(data) as Record<string, unknown>;
+    if (!data) {
+        if (!raw || raw === "[DONE]") return;
+        try {
+            consumeResponseStreamEvent(JSON.parse(raw) as Record<string, unknown>, state, onDelta);
+        } catch {
+            return;
+        }
+        return;
+    }
+    if (data === "[DONE]") return;
+    consumeResponseStreamEvent(JSON.parse(data) as Record<string, unknown>, state, onDelta);
+}
+
+function consumeResponseStreamEvent(event: Record<string, unknown>, state: ResponseStreamState, onDelta?: (text: string) => void) {
     const type = stringValue(event.type);
     const errorMessage = responseErrorMessage(event);
     if (errorMessage) state.error = errorMessage;
@@ -474,15 +548,52 @@ function consumeResponseStreamBlock(block: string, state: ResponseStreamState, o
         state.text += event.delta;
         onDelta?.(state.text);
     }
-    if (type === "response.output_text.done" && !state.text && typeof event.text === "string") {
+    if (type === "response.output_text.done" && typeof event.text === "string" && event.text.length >= state.text.length) {
         state.text = event.text;
         onDelta?.(state.text);
     }
-    if (type === "response.completed" && isRecord(event.response)) {
+    if (isRecord(event.response)) {
         state.payload = event.response as ResponseApiPayload;
     } else if (Array.isArray(event.output)) {
         state.payload = event as ResponseApiPayload;
     }
+    if (type === "response.function_call_arguments.delta" || type === "response.function_call_arguments.done" || type === "response.output_item.added") {
+        const key = stringValue(event.item_id) || stringValue(event.call_id) || String(event.output_index ?? "0");
+        const current = state.responseToolCalls.get(key) || { id: "", name: "", arguments: "" };
+        const item: Record<string, unknown> = isRecord(event.item) ? event.item : {};
+        const name = stringValue(event.name) || stringValue(item.name);
+        const args = type === "response.function_call_arguments.done" ? stringValue(event.arguments) : type === "response.function_call_arguments.delta" ? stringValue(event.delta) : stringValue(item.arguments);
+        state.responseToolCalls.set(key, {
+            id: current.id || stringValue(event.call_id) || stringValue(item.call_id) || stringValue(item.id) || stringValue(event.item_id) || key,
+            name: current.name || name,
+            arguments: args ? (type === "response.function_call_arguments.done" ? args : `${current.arguments}${args}`) : current.arguments,
+        });
+    }
+    const choices = Array.isArray(event.choices) ? event.choices : [];
+    choices.forEach((choice) => {
+        if (!isRecord(choice)) return;
+        const hasDelta = isRecord(choice.delta);
+        const delta: Record<string, unknown> = hasDelta ? choice.delta as Record<string, unknown> : isRecord(choice.message) && !state.text ? choice.message as Record<string, unknown> : {};
+        const content = textContent(delta.content);
+        if (content) {
+            state.text += content;
+            onDelta?.(state.text);
+        }
+        const calls = delta.tool_calls ?? delta.toolCalls;
+        if (!Array.isArray(calls)) return;
+        calls.forEach((rawCall, fallbackIndex) => {
+            if (!isRecord(rawCall)) return;
+            const index = typeof rawCall.index === "number" ? rawCall.index : fallbackIndex;
+            const fn = isRecord(rawCall.function) ? rawCall.function : {};
+            const current = state.chatToolCalls.get(index) || { id: "", name: "", arguments: "" };
+            state.chatToolCalls.set(index, {
+                id: current.id || stringValue(rawCall.id) || stringValue(rawCall.call_id),
+                name: current.name + stringValue(fn.name),
+                arguments: current.arguments + stringValue(fn.arguments),
+            });
+        });
+        if (isRecord(choice.message)) state.payload = event as ResponseApiPayload;
+    });
 }
 
 function consumeResponseStreamText(state: ResponseStreamState, text: string, onDelta?: (text: string) => void, flush = false) {
@@ -500,6 +611,27 @@ function consumeResponseStreamText(state: ResponseStreamState, text: string, onD
     }
 }
 
+function responseStreamToolCalls(state: ResponseStreamState): ResponseToolCall[] {
+    const responses = [...state.responseToolCalls.values()]
+        .filter((call) => call.id && call.name)
+        .map((call) => ({ id: call.id, type: "function" as const, function: { name: call.name, arguments: call.arguments || "{}" } }));
+    const chats = [...state.chatToolCalls.values()]
+        .filter((call) => call.id && call.name)
+        .map((call) => ({ id: call.id, type: "function" as const, function: { name: call.name, arguments: call.arguments || "{}" } }));
+    return [...responses, ...chats];
+}
+
+function finalizeResponseStream(state: ResponseStreamState, onDelta?: (text: string) => void): ToolResponseResult {
+    if (state.error) throw new Error(state.error);
+    if (!state.payload) return ensureToolResponse({ content: state.text, toolCalls: responseStreamToolCalls(state) });
+    validateResponsePayload(state.payload);
+    const parsed = parseToolResponse(state.payload);
+    const finalContent = parsed.content && (!state.text || parsed.content.length >= state.text.length) ? parsed.content : state.text;
+    const result = ensureToolResponse({ content: finalContent, toolCalls: parsed.toolCalls.length ? parsed.toolCalls : responseStreamToolCalls(state) });
+    if (!state.text && result.content) onDelta?.(result.content);
+    return result;
+}
+
 async function requestStreamingResponse(config: AiConfig, body: Record<string, unknown>, onDelta?: (text: string) => void, options?: RequestOptions): Promise<ToolResponseResult> {
     const response = await fetch(aiApiUrl(config, "/responses"), {
         method: "POST",
@@ -508,15 +640,32 @@ async function requestStreamingResponse(config: AiConfig, body: Record<string, u
         signal: options?.signal,
     });
     if (!response.ok) throw new Error(await readFetchError(response, "请求失败"));
+    if (!isEventStreamResponse(response)) {
+        const raw = await response.text();
+        try {
+            const payload = parseJsonText<ResponseApiPayload>(raw, {});
+            validateResponsePayload(payload);
+            const result = ensureToolResponse(parseToolResponse(payload));
+            if (result.content) onDelta?.(result.content);
+            return result;
+        } catch (error) {
+            if (!/^\s*(?::|data:|event:)/m.test(raw)) throw error;
+            const state: ResponseStreamState = { buffer: "", text: "", chatToolCalls: new Map(), responseToolCalls: new Map() };
+            consumeResponseStreamText(state, raw, onDelta, true);
+            return finalizeResponseStream(state, onDelta);
+        }
+    }
     if (!response.body) {
-        const payload = (await response.json()) as ResponseApiPayload;
+        const payload = await readJsonResponse<ResponseApiPayload>(response, {});
         validateResponsePayload(payload);
-        return parseToolResponse(payload);
+        const result = ensureToolResponse(parseToolResponse(payload));
+        if (result.content) onDelta?.(result.content);
+        return result;
     }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    const state: ResponseStreamState = { buffer: "", text: "" };
+    const state: ResponseStreamState = { buffer: "", text: "", chatToolCalls: new Map(), responseToolCalls: new Map() };
     for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -524,11 +673,7 @@ async function requestStreamingResponse(config: AiConfig, body: Record<string, u
         if (state.error) throw new Error(state.error);
     }
     consumeResponseStreamText(state, decoder.decode(), onDelta, true);
-    if (state.error) throw new Error(state.error);
-    if (!state.payload) return { content: state.text, toolCalls: [] };
-    validateResponsePayload(state.payload);
-    const result = parseToolResponse(state.payload);
-    return { ...result, content: state.text || result.content };
+    return finalizeResponseStream(state, onDelta);
 }
 
 function toGeminiBody(config: AiConfig, messages: ResponseInputMessage[], extra?: Record<string, unknown>) {
@@ -615,9 +760,25 @@ async function requestGeminiStreamingResponse(config: AiConfig, body: Record<str
         signal: options?.signal,
     });
     if (!response.ok) throw new Error(await readFetchError(response, "请求失败"));
+    if (!isEventStreamResponse(response)) {
+        const raw = await response.text();
+        try {
+            const result = ensureToolResponse(parseGeminiToolResponse(parseJsonText<GeminiPayload>(raw, {})));
+            if (result.content) onDelta?.(result.content);
+            return result;
+        } catch (error) {
+            if (!/^\s*(?::|data:|event:)/m.test(raw)) throw error;
+            const state: GeminiStreamState = { buffer: "", text: "", toolCalls: [] };
+            consumeGeminiStreamText(state, raw, onDelta, true);
+            if (state.error) throw new Error(state.error);
+            return ensureToolResponse({ content: state.text, toolCalls: state.toolCalls });
+        }
+    }
     if (!response.body) {
-        const payload = (await response.json()) as GeminiPayload;
-        return parseGeminiToolResponse(payload);
+        const payload = await readJsonResponse<GeminiPayload>(response, {});
+        const result = ensureToolResponse(parseGeminiToolResponse(payload));
+        if (result.content) onDelta?.(result.content);
+        return result;
     }
 
     const reader = response.body.getReader();
@@ -631,7 +792,7 @@ async function requestGeminiStreamingResponse(config: AiConfig, body: Record<str
     }
     consumeGeminiStreamText(state, decoder.decode(), onDelta, true);
     if (state.error) throw new Error(state.error);
-    return { content: state.text, toolCalls: state.toolCalls };
+    return ensureToolResponse({ content: state.text, toolCalls: state.toolCalls });
 }
 
 function consumeGeminiStreamText(state: GeminiStreamState, text: string, onDelta?: (text: string) => void, flush = false) {
@@ -650,13 +811,23 @@ function consumeGeminiStreamText(state: GeminiStreamState, text: string, onDelta
 }
 
 function consumeGeminiStreamBlock(block: string, state: GeminiStreamState, onDelta?: (text: string) => void) {
+    const raw = block.trim();
     const data = block
         .split(/\r?\n/)
         .filter((line) => line.startsWith("data:"))
         .map((line) => line.slice(5).replace(/^ /, ""))
         .join("\n")
         .trim();
-    if (!data || data === "[DONE]") return;
+    if (!data) {
+        if (!raw || raw === "[DONE]") return;
+        try {
+            consumeGeminiStreamBlock(`data: ${raw}`, state, onDelta);
+        } catch {
+            return;
+        }
+        return;
+    }
+    if (data === "[DONE]") return;
     const result = parseGeminiToolResponse(JSON.parse(data) as GeminiPayload);
     if (result.content) {
         state.text += result.content;

@@ -250,7 +250,7 @@ class CodexAppClient {
 
     private handle(message: Json) {
         const id = Number(message.id);
-        if (message.error && this.pending.has(id)) return this.reject(id, String(field(message.error, "message") || "Codex request failed"));
+        if (message.error && this.pending.has(id)) return this.reject(id, codexErrorMessage(message.error));
         if (this.pending.has(id)) return this.resolve(id, message.result);
         if (typeof message.method === "string" && "id" in message) return this.answerServerRequest(message);
         if (typeof message.method === "string") this.handleNotification(message.method, (message.params || {}) as Json);
@@ -258,30 +258,43 @@ class CodexAppClient {
 
     private handleNotification(method: string, params: Json) {
         if (method === "item/agentMessage/delta") return this.emitDelta(params);
+        if (method === "item/updated") {
+            const item = normalizeItem(field(params, "item") || params);
+            const type = String(field(item, "type") || "");
+            if (type === "agent_message" || type === "agentMessage") {
+                const id = String(field(item, "id") || field(params, "itemId") || "");
+                const delta = field(item, "delta") ?? field(params, "delta");
+                const text = field(item, "text") ?? field(params, "text");
+                this.emit("agent_event", { agent: "codex", type: "item.updated", item: { id, type: "agent_message", ...(typeof delta === "string" ? { delta } : {}), ...(typeof delta !== "string" && typeof text === "string" ? { text } : {}) }, ...codexEventScope(params) });
+            }
+            return;
+        }
         if (method === "thread/tokenUsage/updated") this.lastUsage = normalizeUsage(params);
         const event = normalizeCodexNotification(method, params);
         if (!event) return;
         if (event.type === "turn.completed") event.usage = this.lastUsage;
         this.emit("agent_event", { agent: "codex", ...event });
         if (event.type === "turn.completed") {
-            const turnId = String(field(params, "turnId") || field(field(params, "turn"), "id") || "");
+            const turnId = String(field(params, "turnId") || field(params, "turn_id") || field(field(params, "turn"), "id") || "");
             const pending = this.activeTurns.get(turnId);
-            const error = field(field(params, "turn"), "error");
+            const error = codexError(params);
             if (pending) {
                 this.activeTurns.delete(turnId);
-                error ? pending.reject(new Error(String(field(error, "message") || "Codex turn failed"))) : pending.resolve(event);
+                error ? pending.reject(new Error(codexErrorMessage(error))) : pending.resolve(event);
             } else if (turnId) {
-                this.completedTurns.set(turnId, error ? new Error(String(field(error, "message") || "Codex turn failed")) : null);
+                this.completedTurns.set(turnId, error ? new Error(codexErrorMessage(error)) : null);
             }
             this.emit("agent_event", { agent: "codex", type: "stream.summary", delta_count: this.deltaCount, ...codexEventScope(params) });
             this.deltaCount = 0;
             this.emit("agent_done", { agent: "codex", usage: event.usage, ...codexEventScope(params) });
+            this.textByItem.clear();
         }
     }
 
     private emitDelta(params: Json) {
-        const id = String(field(params, "itemId") || "");
-        const text = `${this.textByItem.get(id) || ""}${String(field(params, "delta") || "")}`;
+        const id = String(field(params, "itemId") || field(params, "item_id") || field(params, "id") || "");
+        const delta = field(params, "delta") ?? "";
+        const text = `${this.textByItem.get(id) || ""}${String(delta)}`;
         this.deltaCount += 1;
         this.textByItem.set(id, text);
         this.emit("agent_event", { agent: "codex", type: "item.updated", item: { id, type: "agent_message", text }, ...codexEventScope(params) });
@@ -330,16 +343,36 @@ function normalizeCodexNotification(method: string, params: Json): AgentEvent | 
     const scope = codexEventScope(params);
     if (method === "thread/started") return { type: "thread.started", ...scope };
     if (method === "turn/started") return { type: "turn.started", ...scope };
-    if (method === "turn/completed") return { type: "turn.completed", usage: null, ...scope };
+    if (method === "turn/completed" || method === "turn/failed" || method === "turn/cancelled") {
+        const status = String(field(field(params, "turn"), "status") || field(params, "status") || "");
+        const error = codexError(params);
+        const fallbackStatus = method === "turn/failed" ? "failed" : method === "turn/cancelled" ? "cancelled" : "";
+        return { type: "turn.completed", usage: null, ...(status || fallbackStatus ? { status: status || fallbackStatus } : {}), ...(error ? { error, message: codexErrorMessage(error) } : {}), ...scope };
+    }
     if (method === "item/started") return { type: "item.started", item: normalizeItem(field(params, "item")), ...scope };
     if (method === "item/completed") return { type: "item.completed", item: normalizeItem(field(params, "item")), ...scope };
-    if (method === "error") return { type: "error", message: field(params, "message"), ...scope };
+    if (method === "error") {
+        const error = codexError(params);
+        return { type: "error", message: codexErrorMessage(error) || String(field(params, "message") || ""), ...(error ? { error } : {}), ...scope };
+    }
     return null;
 }
 
+function codexError(params: Json) {
+    const turn = field(params, "turn");
+    return field(params, "error") || field(turn, "error") || field(params, "additionalDetails") || field(turn, "additionalDetails") || field(params, "failureReason") || field(turn, "failureReason") || field(params, "reason") || field(params, "data");
+}
+
+function codexErrorMessage(error: unknown): string {
+    if (error == null) return "";
+    if (typeof error === "string") return error;
+    const detail = field(error, "message") || field(error, "details") || field(error, "additionalDetails") || field(error, "failureReason") || field(error, "reason") || field(error, "data") || field(error, "error");
+    return typeof detail === "string" ? detail : codexErrorMessage(detail) || "Codex turn failed";
+}
+
 function codexEventScope(params: Json) {
-    const threadId = String(field(params, "threadId") || field(field(params, "thread"), "id") || "");
-    const turnId = String(field(params, "turnId") || field(field(params, "turn"), "id") || "");
+    const threadId = String(field(params, "threadId") || field(params, "thread_id") || field(field(params, "thread"), "id") || "");
+    const turnId = String(field(params, "turnId") || field(params, "turn_id") || field(field(params, "turn"), "id") || "");
     return { ...(threadId ? { thread_id: threadId } : {}), ...(turnId ? { turn_id: turnId } : {}) };
 }
 

@@ -123,12 +123,12 @@ export function startHttpServer() {
             const attachmentRefs = session.setTurnAttachments(clientId, attachments);
             const chatMessage = {
                 sourceClientId: clientId,
-                message: { id: String(req.body?.messageId || Date.now()), role: "user", text: String(req.body?.messageText || prompt || `发送了 ${attachments.length} 张图片`) },
+                message: { id: String(req.body?.messageId || Date.now()), clientMessageId: String(req.body?.messageId || ""), threadId, role: "user", text: String(req.body?.messageText || prompt || `发送了 ${attachments.length} 张图片`) },
             };
             let chatThreadId = "";
             const turnEmit = (type: string, payload: unknown) => {
                 const data = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : { value: payload };
-                session.emitThread(type, threadId, data);
+                session.emitThread(type, threadId, { ...data, thread_id: data.thread_id || threadId, threadId: data.threadId || threadId });
             };
             void runCodexTurn(withAgentPrompt(withAttachmentContext(prompt, attachmentRefs)), turnEmit, attachments, {
                 threadId,

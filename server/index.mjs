@@ -1367,6 +1367,7 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
         const isStream = contentType?.toLowerCase().includes("text/event-stream") || String(req.headers.accept || "").toLowerCase().includes("text/event-stream");
         if (isStream) {
             // 流式转发（兼容 SSE 文本流）
+            res.setHeader("X-Accel-Buffering", "no");
             let streamed = 0;
             for await (const chunk of upstream.body) {
                 streamed += chunk.length;
