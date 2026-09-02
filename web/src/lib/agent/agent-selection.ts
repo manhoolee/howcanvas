@@ -38,7 +38,7 @@ export function buildAgentCanvasSelection(projectId: string, nodes: CanvasNodeDa
 }
 
 /** Convenience adapter for callers that already hold a canvas snapshot. */
-export function buildAgentCanvasSelectionFromSnapshot(snapshot: CanvasAgentSnapshot | null | undefined) {
+export function buildAgentCanvasSelectionFromSnapshot(snapshot: CanvasAgentSnapshot | null | undefined): AgentCanvasSelection {
     return snapshot ? buildAgentCanvasSelection(snapshot.projectId, snapshot.nodes, snapshot.selectedNodeIds) : { projectId: "", items: [] };
 }
 
@@ -49,7 +49,8 @@ export function formatAgentCanvasSelectionContext(selection: AgentCanvasSelectio
     const rows = items
         .map((item, index) => {
             const detail = item.summary ? `：${item.summary}` : "";
-            return `${index + 1}. [${agentSelectionTypeLabel(item.type)}] ${item.title}（节点 ID：${item.id}）${detail}`;
+            const status = item.status ? `（状态：${item.status}）` : "";
+            return `${index + 1}. [${agentSelectionTypeLabel(item.type)}] ${item.title}（节点 ID：${item.id}）${status}${detail}`;
         })
         .join("\n");
     return [CANVAS_SELECTION_CONTEXT_MARKER, "当前画布选中的元素（仅作为本轮对话上下文）：", project + rows, "请优先依据这些节点的事实回答；需要修改画布时使用节点 ID。", CANVAS_SELECTION_CONTEXT_END_MARKER].join("\n");
@@ -122,7 +123,7 @@ function selectionStatus(metadata: NonNullable<CanvasNodeData["metadata"]>) {
 function compactText(value: unknown) {
     if (typeof value !== "string") return "";
     const normalized = value
-        .replace(/data:(?:[a-z0-9.+-]+\/)?[a-z0-9.+-]+;base64,[^\s)]+/gi, "[媒体已省略]")
+        .replace(/data:[^\s)]+/gi, "[媒体已省略]")
         .replace(/blob:[^\s)]+/gi, "[媒体已省略]")
         .replace(selectionMarkerPattern(), "")
         .replace(/[ \t\r\n]+/g, " ")
