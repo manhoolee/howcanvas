@@ -80,7 +80,7 @@ configuration backup, verifies all route markers, tests Nginx, and recreates
 only `gateway`; a failed configuration test restores the backup automatically:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/manhoolee/howcanvas/f7c99d1/scripts/restore-visual-workbench-route.sh | bash
+curl -fsSL https://raw.githubusercontent.com/manhoolee/howcanvas/v0.12.5/scripts/restore-visual-workbench-route.sh | bash
 ```
 
 ## 6. Validation Gates

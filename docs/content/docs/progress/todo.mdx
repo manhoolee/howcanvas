@@ -7,6 +7,7 @@ description: 当前项目后续值得处理的事项
 
 本文档用来记录当前项目后续比较值得处理的事项。
 
+- 发布并固定与当前源码协议匹配的 Canvas Agent npm 版本，更新插件和页面中的启动命令，并完成选区上下文与流式输出验收。
 - 本地 Agent 接入后续：按[本地 Agent 接入规划](/docs/progress/local-agent-integration-plan)把 Claude Code CLI Adapter 升级为 Claude Agent SDK Adapter，并完善工具队列体验。
 - 生产 HTTPS：为公网网关配置域名与 TLS，启用 `COOKIE_SECURE=true`，稳定后再加 HSTS，避免登录与 AI 流量经公网明文传输。
 - 第三方插件隔离：在当前显式信任确认之上，评估 iframe/Worker 沙箱、权限清单和可审计的能力桥接，降低插件与主页同权运行的剩余风险。

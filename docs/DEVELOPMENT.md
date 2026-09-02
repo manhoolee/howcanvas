@@ -417,6 +417,7 @@ curl -fsS http://127.0.0.1/api/health
 - [README.md](../README.md)：项目介绍、快速开始和生产部署概览
 - [VISUAL_SKILLS_CANVAS_AGENT.md](VISUAL_SKILLS_CANVAS_AGENT.md)：画布 Agent 视觉 Skill 接入、调用契约和维护说明
 - [CHANGE_ARCHIVE_2026-09-01_VISUAL_SKILLS.md](CHANGE_ARCHIVE_2026-09-01_VISUAL_SKILLS.md)：本次上线的代码、部署、验证和回滚档案
+- [CHANGE_ARCHIVE_2026-09-02_CANVAS_AGENT.md](CHANGE_ARCHIVE_2026-09-02_CANVAS_AGENT.md)：v0.12.5 画布 Agent 鉴权、结果交付、选区上下文和生产部署档案
 - [PROJECT_REVIEW_2026-07-28.md](PROJECT_REVIEW_2026-07-28.md)：阶段性项目 review
 - [server/.env.example](../server/.env.example)：生产配置模板
 - [SECURITY.md](../SECURITY.md)：安全问题报告说明
