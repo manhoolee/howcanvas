@@ -125,7 +125,7 @@ export function startHttpServer() {
             const attachmentRefs = session.setTurnAttachments(clientId, attachments);
             const chatMessage = {
                 sourceClientId: clientId,
-                message: { id: String(req.body?.messageId || Date.now()), clientMessageId: String(req.body?.messageId || ""), threadId, role: "user", text: String(req.body?.messageText || prompt || `发送了 ${attachments.length} 张图片`), ...(canvasSelection.length ? { canvasSelection } : {}) },
+                message: { id: String(req.body?.messageId || Date.now()), clientMessageId: String(req.body?.messageId || ""), threadId, role: "user", text: String(req.body?.messageText || prompt || `发送了 ${attachments.length} 张图片`), ...(canvasSelection.length ? { canvasSelection, canvasSelectionProjectId: safeSelectionText(req.body?.canvasSelectionProjectId, 160) } : {}) },
             };
             let chatThreadId = "";
             const turnEmit = (type: string, payload: unknown) => {

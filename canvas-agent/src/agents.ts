@@ -5,7 +5,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-import { AGENT_PROMPT, VERSION } from "./config.js";
+import { AGENT_EXECUTION_PROMPT, EFFECTIVE_AGENT_PROMPT, VERSION } from "./config.js";
 import type { AgentAttachment, AgentEmit } from "./types.js";
 
 type Json = Record<string, unknown>;
@@ -22,7 +22,7 @@ const canvasAgentMcp = canvasAgentMcpCommand();
 const require = createRequire(import.meta.url);
 
 export function withAgentPrompt(prompt: string) {
-    return prompt.trim() ? `${AGENT_PROMPT}\n\n用户请求：${prompt}` : "";
+    return prompt.trim() ? `${EFFECTIVE_AGENT_PROMPT}\n\n${AGENT_EXECUTION_PROMPT}\n\n用户请求：${prompt}` : "";
 }
 
 export async function runCodexTurn(prompt: string, emit: AgentEmit, attachments: AgentAttachment[] = [], options: CodexRunOptions = {}) {

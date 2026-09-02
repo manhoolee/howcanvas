@@ -25,6 +25,13 @@ export type AgentCanvasSelection = {
     items: AgentCanvasSelectionItem[];
 };
 
+/** Create a message-level snapshot that cannot follow later canvas selection changes. */
+export function snapshotAgentCanvasSelection(selection: AgentCanvasSelection | null | undefined): AgentCanvasSelection | null {
+    if (!selection?.items.length) return null;
+    const items = selection.items.map(sanitizeSelectionItem).filter((item): item is AgentCanvasSelectionItem => Boolean(item));
+    return items.length ? { projectId: String(selection.projectId || ""), items } : null;
+}
+
 /**
  * Build the small, model-safe representation of the currently selected nodes.
  * Full node metadata can contain image/video data URLs, so it is intentionally
@@ -56,8 +63,14 @@ export function formatAgentCanvasSelectionContext(selection: AgentCanvasSelectio
         })
         .join("\n");
     const omitted = items.length - visibleItems.length;
-    const omittedText = omitted ? `\n（另有 ${omitted} 个选中元素未展开，必要时通过画布工具读取。）` : "";
-    return [CANVAS_SELECTION_CONTEXT_MARKER, "当前画布选中的元素（仅作为本轮对话上下文）：", project + rows + omittedText, "请优先依据这些节点的事实回答；需要修改画布时使用节点 ID。", CANVAS_SELECTION_CONTEXT_END_MARKER].join("\n");
+    const omittedText = omitted ? `\n（另有 ${omitted} 个已固定元素未展开。）` : "";
+    return [
+        CANVAS_SELECTION_CONTEXT_MARKER,
+        "本条用户消息已固定的画布元素（发送时快照，不随当前选区变化）：",
+        project + rows + omittedText,
+        "必须以这份快照中的节点 ID 作为本条消息的操作对象；不得读取或猜测当前选区来替换它。若需要最新节点数据，可读取画布后按这些固定 ID 匹配。",
+        CANVAS_SELECTION_CONTEXT_END_MARKER,
+    ].join("\n");
 }
 
 function sanitizeSelectionItem(item: AgentCanvasSelectionItem): AgentCanvasSelectionItem | null {

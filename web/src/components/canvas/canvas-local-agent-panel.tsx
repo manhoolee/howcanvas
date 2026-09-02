@@ -13,7 +13,7 @@ import { uploadImage } from "@/services/image-storage";
 import { requestAgentLlmTurn, type ResponseInputMessage } from "@/services/api/image";
 import { backend, getAuthEpoch, type AgentSkillId, type ServerAgentLlmConfig } from "@/services/api/backend";
 import { buildAgentLlmSystemPrompt, AGENT_LLM_SKILL_LABELS, expandCanvasTool, getAgentSkillDefinition, toolsForAgentSkills } from "@/lib/agent/agent-llm-skills";
-import { formatAgentCanvasSelectionContext, stripAgentCanvasSelectionContext } from "@/lib/agent/agent-selection";
+import { formatAgentCanvasSelectionContext, snapshotAgentCanvasSelection, stripAgentCanvasSelectionContext } from "@/lib/agent/agent-selection";
 import { applyServerAiConfig, toFrontendServerModelSelection } from "@/lib/server-ai-config";
 import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -449,7 +449,7 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
     };
 
     const runLlmTool = async (payload: AgentPendingToolCall) => {
-        const needsConfirmation = payload.name.startsWith("canvas_") || ["workbench_image_generate", "workbench_video_generate", "assets_add"].includes(payload.name);
+        const needsConfirmation = llmToolNeedsConfirmation(payload.name, payload.input || {});
         if (confirmToolsRef.current && needsConfirmation) {
             if (pendingToolRef.current || llmPendingRef.current) throw new Error("仍有待确认的工具调用");
             setAgentState({ pendingTool: payload });
@@ -482,16 +482,16 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
             addMessage({ role: "error", title: "Agent LLM 渠道未就绪", text: "服务器文本模型渠道尚未加载或已失效，请刷新页面或联系管理员。" });
             return;
         }
-        const selection = useAgentStore.getState().canvasSelection;
+        const selection = snapshotAgentCanvasSelection(useAgentStore.getState().canvasSelection);
         const selectedNodes = selection?.items || [];
         const messageId = createId();
         const history = messages
             .filter((item) => item.role === "user" || item.role === "assistant")
             .slice(-12)
-            .map((item) => ({ role: item.role as "user" | "assistant", content: item.text }));
+            .map((item) => ({ role: item.role as "user" | "assistant", content: agentHistoryContent(item) }));
         const llmConfig = { ...config, model, textModel: model };
         setAgentState({ activity: "Skill + LLM 思考中", sending: true, waiting: true });
-        addMessage({ id: messageId, role: "user", text, ...(selectedNodes.length ? { canvasSelection: selectedNodes } : {}) });
+        addMessage({ id: messageId, role: "user", text, ...(selectedNodes.length ? { canvasSelection: selectedNodes, canvasSelectionProjectId: selection?.projectId } : {}) });
         addEventLog("Skill + LLM 用户发送", { text, model, skills: agentLlmConfig.skills, selectedNodes: selectedNodes.length });
         let activeAssistantId = "";
         try {
@@ -595,12 +595,12 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
         }
         setAgentState({ activity: "发送中", sending: true });
         localTurnActiveRef.current = true;
-        const selection = useAgentStore.getState().canvasSelection;
+        const selection = snapshotAgentCanvasSelection(useAgentStore.getState().canvasSelection);
         const selectedNodes = selection?.items || [];
         const selectionHint = formatAgentCanvasSelectionContext(selection);
         const requestPrompt = `${requestPromptBase}${selectionHint ? `\n\n${selectionHint}` : ""}`;
         const messageId = createId();
-        addMessage({ id: messageId, role: "user", text: text || "发送了图片", attachments: files, clientMessageId: messageId, ...(selectedNodes.length ? { canvasSelection: selectedNodes } : {}) });
+        addMessage({ id: messageId, role: "user", text: text || "发送了图片", attachments: files, clientMessageId: messageId, ...(selectedNodes.length ? { canvasSelection: selectedNodes, canvasSelectionProjectId: selection?.projectId } : {}) });
         addEventLog("用户发送", { text, attachments: files.map(({ name, type, size }) => ({ name, type, size })), selectedNodes: selectedNodes.length });
         try {
             const data = await fetchAgentJson<{ threadId?: string }>(endpoint, token, "/agent/codex/turn", {
@@ -615,7 +615,7 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
                     permissionMode: "request",
                     ...(currentConversation?.conversationId ? { conversationId: currentConversation.conversationId } : {}),
                     ...(typeof currentConversation?.revision === "number" ? { expectedRevision: currentConversation.revision } : {}),
-                    ...(selectedNodes.length ? { selectionContext: formatAgentCanvasSelectionContext(selection), canvasSelection: selectedNodes } : {}),
+                    ...(selectedNodes.length ? { selectionContext: formatAgentCanvasSelectionContext(selection), canvasSelection: selectedNodes, canvasSelectionProjectId: selection?.projectId } : {}),
                     attachments: files.map(({ id, name, type, size, width, height, dataUrl }) => ({ id, name, type, size, width, height, dataUrl })),
                 }),
             });
@@ -1868,6 +1868,23 @@ function normalizeHistoryMessages(messages: AgentChatItem[]) {
             streamDelta: undefined,
         }))
         .filter((item) => item.text);
+}
+
+function agentHistoryContent(item: AgentChatItem) {
+    if (item.role !== "user" || !item.canvasSelection?.length) return item.text;
+    const selectionContext = formatAgentCanvasSelectionContext({ projectId: item.canvasSelectionProjectId || "", items: item.canvasSelection });
+    return selectionContext ? `${item.text}\n\n${selectionContext}` : item.text;
+}
+
+function llmToolNeedsConfirmation(name: string, input: Record<string, unknown>) {
+    if (["workbench_image_generate", "workbench_video_generate"].includes(name)) return input.run !== false;
+    if (["canvas_generate_text", "canvas_generate_image", "canvas_generate_video", "canvas_generate_audio", "canvas_run_generation", "canvas_delete_nodes"].includes(name)) return true;
+    if (["canvas_create_config_node", "canvas_create_image_prompt_flow", "canvas_create_generation_flow"].includes(name)) return input.autoRun === true;
+    if (name !== "canvas_apply_ops" || !Array.isArray(input.ops)) return false;
+    return input.ops.some((raw) => {
+        if (!raw || typeof raw !== "object") return false;
+        return ["delete_node", "delete_connections", "run_generation"].includes(String((raw as Record<string, unknown>).type || ""));
+    });
 }
 
 function mergeAgentHistoryMessages(history: AgentChatItem[], current: AgentChatItem[]) {

@@ -20,4 +20,7 @@ test("Agent 凭据目录和配置文件只对当前用户可读写", async (t) =
     assert.equal(fs.statSync(config.CONFIG_DIR).mode & 0o777, 0o700);
     assert.equal(fs.statSync(config.CONFIG_FILE).mode & 0o777, 0o600);
     assert.equal(JSON.parse(fs.readFileSync(config.CONFIG_FILE, "utf8")).token, "secret-token");
+    assert.match(config.EFFECTIVE_AGENT_PROMPT, /发送时已固定的消息级快照/);
+    assert.doesNotMatch(config.EFFECTIVE_AGENT_PROMPT, /canvas_get_selection 复核最新选区/);
+    assert.match(config.AGENT_EXECUTION_PROMPT, /用户本轮要求是唯一任务边界/);
 });
