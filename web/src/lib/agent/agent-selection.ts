@@ -10,6 +10,7 @@ import type { CanvasNodeData, CanvasNodeTypeId } from "@/types/canvas";
 export const CANVAS_SELECTION_CONTEXT_MARKER = "[[CANVAS_SELECTION_CONTEXT]]";
 const CANVAS_SELECTION_CONTEXT_END_MARKER = "[[/CANVAS_SELECTION_CONTEXT]]";
 const MAX_SELECTION_SUMMARY_LENGTH = 240;
+const MAX_SELECTION_CONTEXT_ITEMS = 24;
 
 export type AgentCanvasSelectionItem = {
     id: string;
@@ -43,17 +44,31 @@ export function buildAgentCanvasSelectionFromSnapshot(snapshot: CanvasAgentSnaps
 }
 
 export function formatAgentCanvasSelectionContext(selection: AgentCanvasSelection | null | undefined) {
-    const items = selection?.items || [];
+    const items = (selection?.items || []).map(sanitizeSelectionItem).filter((item): item is AgentCanvasSelectionItem => Boolean(item));
     if (!items.length) return "";
     const project = selection?.projectId ? `项目 ID：${selection.projectId}\n` : "";
-    const rows = items
+    const visibleItems = items.slice(0, MAX_SELECTION_CONTEXT_ITEMS);
+    const rows = visibleItems
         .map((item, index) => {
             const detail = item.summary ? `：${item.summary}` : "";
             const status = item.status ? `（状态：${item.status}）` : "";
             return `${index + 1}. [${agentSelectionTypeLabel(item.type)}] ${item.title}（节点 ID：${item.id}）${status}${detail}`;
         })
         .join("\n");
-    return [CANVAS_SELECTION_CONTEXT_MARKER, "当前画布选中的元素（仅作为本轮对话上下文）：", project + rows, "请优先依据这些节点的事实回答；需要修改画布时使用节点 ID。", CANVAS_SELECTION_CONTEXT_END_MARKER].join("\n");
+    const omitted = items.length - visibleItems.length;
+    const omittedText = omitted ? `\n（另有 ${omitted} 个选中元素未展开，必要时通过画布工具读取。）` : "";
+    return [CANVAS_SELECTION_CONTEXT_MARKER, "当前画布选中的元素（仅作为本轮对话上下文）：", project + rows + omittedText, "请优先依据这些节点的事实回答；需要修改画布时使用节点 ID。", CANVAS_SELECTION_CONTEXT_END_MARKER].join("\n");
+}
+
+function sanitizeSelectionItem(item: AgentCanvasSelectionItem): AgentCanvasSelectionItem | null {
+    const id = compactText(item?.id);
+    if (!id || looksLikeMediaUrl(id)) return null;
+    const type = compactText(item?.type) || "node";
+    const title = compactText(item?.title) || agentSelectionTypeLabel(type);
+    const rawSummary = compactText(item?.summary);
+    const summary = looksLikeMediaUrl(rawSummary) ? "" : rawSummary;
+    const status = compactText(item?.status);
+    return { id, type, title, summary, ...(status ? { status } : {}) };
 }
 
 /** Remove the internal selection block before displaying/storing user text. */
@@ -133,7 +148,7 @@ function compactText(value: unknown) {
 }
 
 function looksLikeMediaUrl(value: string) {
-    return isForbiddenMediaUrl(value) || /^\/api\/media\//i.test(value.trim());
+    return isForbiddenMediaUrl(value) || /\/api\/media\//i.test(value.trim());
 }
 
 function isForbiddenMediaUrl(value: string) {

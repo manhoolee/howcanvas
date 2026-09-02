@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 
 import { useAgentStore } from "@/stores/use-agent-store";
 import { applyCanvasAgentOps, type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
+import { buildAgentCanvasSelection } from "@/lib/agent/agent-selection";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import type { CanvasConnection, CanvasNodeData, ContextMenuState, ViewportTransform } from "@/types/canvas";
 import type { ImageStyleDimensionGroup, ImageStyleDimensionSelection, ImageStyleSelection } from "@/types/image-style";
@@ -11,6 +12,7 @@ type GenerateNodeRef = MutableRefObject<((nodeId: string, mode: CanvasNodeGenera
 type AgentBridgeParams = {
     projectId: string;
     title: string | undefined;
+    projectLoaded: boolean;
     nodes: CanvasNodeData[];
     connections: CanvasConnection[];
     selectedNodeIds: Set<string>;
@@ -33,13 +35,15 @@ type AgentBridgeParams = {
  * 供本地 Codex 面板读取。除 applyAgentOps（配置节点插件宿主会用到）外均为内部实现。
  */
 export function useAgentBridge(params: AgentBridgeParams) {
-    const { projectId, title, nodes, connections, selectedNodeIds, viewport, nodesRef, connectionsRef, selectedNodeIdsRef, viewportRef, generateNodeRef, setNodes, setConnections, setSelectedNodeIds, setSelectedConnectionId, setViewport, setContextMenu } =
+    const { projectId, title, projectLoaded, nodes, connections, selectedNodeIds, viewport, nodesRef, connectionsRef, selectedNodeIdsRef, viewportRef, generateNodeRef, setNodes, setConnections, setSelectedNodeIds, setSelectedConnectionId, setViewport, setContextMenu } =
         params;
     const setAgentCanvasContext = useAgentStore((state) => state.setCanvasContext);
+    const setAgentCanvasSelection = useAgentStore((state) => state.setCanvasSelection);
     const [agentUndoSnapshot, setAgentUndoSnapshot] = useState<CanvasAgentSnapshot | null>(null);
     const projectTitle = title || "未命名画布";
 
     const agentSnapshot = useMemo<CanvasAgentSnapshot>(() => ({ projectId, title: projectTitle, nodes, connections, selectedNodeIds: Array.from(selectedNodeIds), viewport }), [connections, projectTitle, nodes, projectId, selectedNodeIds, viewport]);
+    const agentSelection = useMemo(() => (projectLoaded ? buildAgentCanvasSelection(projectId, nodes, selectedNodeIds) : { projectId, items: [] }), [nodes, projectId, projectLoaded, selectedNodeIds]);
     const applyAgentOps = useCallback(
         (ops?: CanvasAgentOp[]) => {
             const safeOps = Array.isArray(ops) ? ops.filter((op) => op?.type) : [];
@@ -94,6 +98,17 @@ export function useAgentBridge(params: AgentBridgeParams) {
         setAgentCanvasContext({ snapshot: agentSnapshot, applyOps: applyAgentOps, undoOps: undoAgentOps, canUndo: Boolean(agentUndoSnapshot) });
         return () => setAgentCanvasContext(null);
     }, [agentSnapshot, applyAgentOps, agentUndoSnapshot, setAgentCanvasContext, undoAgentOps]);
+
+    useLayoutEffect(() => {
+        setAgentCanvasSelection(agentSelection);
+    }, [agentSelection, setAgentCanvasSelection]);
+
+    useEffect(() => {
+        return () => {
+            const current = useAgentStore.getState().canvasSelection;
+            if (current?.projectId === projectId) setAgentCanvasSelection(null);
+        };
+    }, [projectId, setAgentCanvasSelection]);
 
     return { applyAgentOps };
 }

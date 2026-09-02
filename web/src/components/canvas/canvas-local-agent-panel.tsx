@@ -13,6 +13,7 @@ import { uploadImage } from "@/services/image-storage";
 import { requestAgentLlmTurn, type ResponseInputMessage } from "@/services/api/image";
 import { backend, getAuthEpoch, type AgentSkillId, type ServerAgentLlmConfig } from "@/services/api/backend";
 import { buildAgentLlmSystemPrompt, AGENT_LLM_SKILL_LABELS, expandCanvasTool, getAgentSkillDefinition, toolsForAgentSkills } from "@/lib/agent/agent-llm-skills";
+import { formatAgentCanvasSelectionContext, stripAgentCanvasSelectionContext } from "@/lib/agent/agent-selection";
 import { applyServerAiConfig, toFrontendServerModelSelection } from "@/lib/server-ai-config";
 import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -76,7 +77,7 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
     // 注意：canvasContext 不在此订阅内 —— 它在拖拽/resize 时会被 project 每帧写入，
     // 但面板只在 ref 同步与防抖 postState 中用到它、渲染层从不读它。若把它放进订阅，
     // 面板会随画布每帧重渲染（性能问题，也是 #185 崩溃的放大器）。改为下方 subscribe 命令式监听。
-    const { width, url, token, connected, enabled, prompt, attachments, sending, waiting, messages, eventLogs, threads, conversation, activeThreadId, workspacePath, loadingThreads, activeTab, agentMode, confirmTools, activity, connectError, pendingTool } = useAgentStore(
+    const { width, url, token, connected, enabled, prompt, attachments, sending, waiting, messages, eventLogs, threads, conversation, activeThreadId, workspacePath, loadingThreads, activeTab, agentMode, confirmTools, activity, connectError, pendingTool, canvasSelection } = useAgentStore(
         useShallow((state) => ({
             width: state.width,
             url: state.url,
@@ -100,6 +101,7 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
             activity: state.activity,
             connectError: state.connectError,
             pendingTool: state.pendingTool,
+            canvasSelection: state.canvasSelection,
         })),
     );
     const setAgentState = useAgentStore((state) => state.setAgentState);
@@ -480,6 +482,8 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
             addMessage({ role: "error", title: "Agent LLM 渠道未就绪", text: "服务器文本模型渠道尚未加载或已失效，请刷新页面或联系管理员。" });
             return;
         }
+        const selection = useAgentStore.getState().canvasSelection;
+        const selectedNodes = selection?.items || [];
         const messageId = createId();
         const history = messages
             .filter((item) => item.role === "user" || item.role === "assistant")
@@ -487,14 +491,15 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
             .map((item) => ({ role: item.role as "user" | "assistant", content: item.text }));
         const llmConfig = { ...config, model, textModel: model };
         setAgentState({ activity: "Skill + LLM 思考中", sending: true, waiting: true });
-        addMessage({ id: messageId, role: "user", text });
-        addEventLog("Skill + LLM 用户发送", { text, model, skills: agentLlmConfig.skills });
+        addMessage({ id: messageId, role: "user", text, ...(selectedNodes.length ? { canvasSelection: selectedNodes } : {}) });
+        addEventLog("Skill + LLM 用户发送", { text, model, skills: agentLlmConfig.skills, selectedNodes: selectedNodes.length });
         let activeAssistantId = "";
         try {
             const enabledTools = toolsForAgentSkills(agentLlmConfig.skills as AgentSkillId[]);
             if (!enabledTools.length) throw new Error("当前没有可用 Skill 工具，请管理员先配置 Skill");
             const attachmentHint = attachments.length ? `\n\n本轮可用图片附件：\n${attachments.map((item, index) => `${index + 1}. attachmentId=${item.id}, name=${item.name}`).join("\n")}\n需要使用附件时，先调用 canvas_create_attachment_nodes，再使用返回的真实节点 ID 作为 referenceNodeIds。` : "";
-            const conversation: ResponseInputMessage[] = [{ role: "system", content: buildAgentLlmSystemPrompt(agentLlmConfig.skills as AgentSkillId[]) }, ...history, { role: "user", content: `${text}${attachmentHint}` }];
+            const selectionHint = formatAgentCanvasSelectionContext(selection);
+            const conversation: ResponseInputMessage[] = [{ role: "system", content: buildAgentLlmSystemPrompt(agentLlmConfig.skills as AgentSkillId[]) }, ...history, { role: "user", content: `${text}${selectionHint ? `\n\n${selectionHint}` : ""}${attachmentHint}` }];
             let hasAssistantOutput = false;
             for (let round = 0; round < 5; round += 1) {
                 const assistantId = createId();
@@ -566,8 +571,8 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
         }
         const text = prompt.trim();
         const files = attachments;
-        const requestPrompt = promptWithAttachments(text, files);
-        if (!connected || !requestPrompt || sending || waiting) return;
+        const requestPromptBase = promptWithAttachments(text, files);
+        if (!connected || !requestPromptBase || sending || waiting) return;
         let currentConversation = useAgentStore.getState().conversation;
         let requestThreadId = useAgentStore.getState().activeThreadId || currentConversation?.threadId || "";
         // 新版 Canvas Agent 会在启动后处于 idle，必须先创建并预热一个草稿线程；
@@ -590,9 +595,13 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
         }
         setAgentState({ activity: "发送中", sending: true });
         localTurnActiveRef.current = true;
+        const selection = useAgentStore.getState().canvasSelection;
+        const selectedNodes = selection?.items || [];
+        const selectionHint = formatAgentCanvasSelectionContext(selection);
+        const requestPrompt = `${requestPromptBase}${selectionHint ? `\n\n${selectionHint}` : ""}`;
         const messageId = createId();
-        addMessage({ id: messageId, role: "user", text: text || "发送了图片", attachments: files, clientMessageId: messageId });
-        addEventLog("用户发送", { text, attachments: files.map(({ name, type, size }) => ({ name, type, size })) });
+        addMessage({ id: messageId, role: "user", text: text || "发送了图片", attachments: files, clientMessageId: messageId, ...(selectedNodes.length ? { canvasSelection: selectedNodes } : {}) });
+        addEventLog("用户发送", { text, attachments: files.map(({ name, type, size }) => ({ name, type, size })), selectedNodes: selectedNodes.length });
         try {
             const data = await fetchAgentJson<{ threadId?: string }>(endpoint, token, "/agent/codex/turn", {
                 method: "POST",
@@ -606,6 +615,7 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
                     permissionMode: "request",
                     ...(currentConversation?.conversationId ? { conversationId: currentConversation.conversationId } : {}),
                     ...(typeof currentConversation?.revision === "number" ? { expectedRevision: currentConversation.revision } : {}),
+                    ...(selectedNodes.length ? { selectionContext: formatAgentCanvasSelectionContext(selection), canvasSelection: selectedNodes } : {}),
                     attachments: files.map(({ id, name, type, size, width, height, dataUrl }) => ({ id, name, type, size, width, height, dataUrl })),
                 }),
             });
@@ -1109,6 +1119,7 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
                     <AgentChatComposer
                         prompt={prompt}
                         attachments={attachments.map(agentAttachmentToChatAttachment)}
+                        selectedNodes={canvasSelection?.items || []}
                         disabled={agentMode === "local" ? !connected || Boolean(conversation?.status && !["ready", "warning", "idle", "completed"].includes(conversation.status)) : !agentLlmConfig.enabled}
                         sending={sending || waiting}
                         placeholder={agentMode === "llm" ? "描述你想完成的图片或视频创作任务" : "询问 Codex，或让它操作网站/画布"}
@@ -1852,7 +1863,7 @@ function normalizeHistoryMessages(messages: AgentChatItem[]) {
         .map((item, index) => ({
             ...item,
             id: item.id || `history-${index}`,
-            text: normalizeText(item.text),
+            text: item.role === "user" ? stripAgentCanvasSelectionContext(normalizeText(item.text)) : normalizeText(item.text),
             streamId: undefined,
             streamDelta: undefined,
         }))

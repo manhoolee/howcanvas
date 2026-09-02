@@ -499,7 +499,13 @@ function displayUserText(text: string) {
     const value = text.trim();
     const marker = "用户请求：";
     const index = value.lastIndexOf(marker);
-    return (index >= 0 ? value.slice(index + marker.length) : value).trim();
+    return stripCanvasSelectionContext((index >= 0 ? value.slice(index + marker.length) : value).trim());
+}
+
+function stripCanvasSelectionContext(text: string) {
+    const marker = "[[CANVAS_SELECTION_CONTEXT]]";
+    const index = text.indexOf(marker);
+    return (index >= 0 ? text.slice(0, index) : text).trim();
 }
 
 function arrayValue(value: unknown) {

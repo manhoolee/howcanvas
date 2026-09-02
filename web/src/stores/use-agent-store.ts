@@ -1,10 +1,11 @@
 import { create } from "zustand";
 
 import type { CanvasAgentOp, CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
+import type { AgentCanvasSelection, AgentCanvasSelectionItem } from "@/lib/agent/agent-selection";
 
 export type AgentChatRole = "user" | "assistant" | "system" | "tool" | "error";
 export type AgentAttachment = { id: string; name: string; type: string; size: number; width: number; height: number; url: string; dataUrl: string };
-export type AgentChatItem = { id: string; role: AgentChatRole; title?: string; text: string; meta?: string; detail?: unknown; attachments?: AgentAttachment[]; streamId?: string; streamDelta?: boolean; clientMessageId?: string; itemId?: string; threadId?: string; turnId?: string };
+export type AgentChatItem = { id: string; role: AgentChatRole; title?: string; text: string; meta?: string; detail?: unknown; attachments?: AgentAttachment[]; canvasSelection?: AgentCanvasSelectionItem[]; streamId?: string; streamDelta?: boolean; clientMessageId?: string; itemId?: string; threadId?: string; turnId?: string };
 export type AgentEventLog = { id: string; time: string; title: string; text: string; raw?: unknown };
 export type AgentPendingToolCall = { requestId: string; name: string; input?: { ops?: CanvasAgentOp[]; path?: string } & Record<string, unknown>; source?: "local" | "llm"; toolCallId?: string };
 export type AgentConversationState = { revision?: number; conversationId?: string; threadId?: string; status?: string; error?: string | null; [key: string]: unknown };
@@ -23,6 +24,7 @@ type AgentStore = {
     panelMounted: boolean;
     panelClosing: boolean;
     canvasContext: AgentCanvasContext | null;
+    canvasSelection: AgentCanvasSelection | null;
     url: string;
     token: string;
     connected: boolean;
@@ -45,13 +47,14 @@ type AgentStore = {
     activity: string;
     connectError: string;
     pendingTool: AgentPendingToolCall | null;
-    setAgentState: (patch: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext">>) => void;
+    setAgentState: (patch: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext" | "setCanvasSelection">>) => void;
     openPanel: () => void;
     closePanel: () => void;
     togglePanel: () => void;
     setCanvasContext: (context: AgentCanvasContext | null) => void;
+    setCanvasSelection: (selection: AgentCanvasSelection | null) => void;
     connectAgent: (options?: { silent?: boolean }) => void;
-    disconnectAgent: (patch?: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext">>) => void;
+    disconnectAgent: (patch?: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext" | "setCanvasSelection">>) => void;
     addMessage: (item: AgentChatItem) => void;
     addEventLog: (item: AgentEventLog) => void;
     clearEventLogs: () => void;
@@ -73,6 +76,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     panelMounted: true,
     panelClosing: false,
     canvasContext: null,
+    canvasSelection: null,
     url: typeof window === "undefined" ? "http://127.0.0.1:17371" : localStorage.getItem("canvas-agent-url") || "http://127.0.0.1:17371",
     token: initialAgentToken(),
     connected: false,
@@ -106,6 +110,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     },
     togglePanel: () => (get().panelOpen ? get().closePanel() : get().openPanel()),
     setCanvasContext: (canvasContext) => set({ canvasContext }),
+    setCanvasSelection: (canvasSelection) =>
+        set((state) => (sameCanvasSelection(state.canvasSelection, canvasSelection) ? state : { canvasSelection })),
     connectAgent: (options) => {
         const silent = options?.silent ?? false;
         const endpoint = get().url.trim().replace(/\/$/, "");
@@ -134,3 +140,12 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     addEventLog: (item) => set((state) => ({ eventLogs: [...state.eventLogs.slice(-160), item] })),
     clearEventLogs: () => set({ eventLogs: [] }),
 }));
+
+function sameCanvasSelection(a: AgentCanvasSelection | null, b: AgentCanvasSelection | null) {
+    if (a === b) return true;
+    if (!a || !b || a.projectId !== b.projectId || a.items.length !== b.items.length) return false;
+    return a.items.every((item, index) => {
+        const other = b.items[index];
+        return Boolean(other) && item.id === other.id && item.type === other.type && item.title === other.title && item.summary === other.summary && item.status === other.status;
+    });
+}

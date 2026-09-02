@@ -104,6 +104,8 @@ export function startHttpServer() {
     app.post("/agent/codex/turn", route(async (req, res) => {
         if (session.codexBusy) return res.status(409).json({ ok: false, error: "Codex 正在运行，请等待当前任务完成" });
         const attachments = Array.isArray(req.body?.attachments) ? (req.body.attachments as AgentAttachment[]) : [];
+        const selectionContext = typeof req.body?.selectionContext === "string" ? sanitizeSelectionContext(req.body.selectionContext) : "";
+        const canvasSelection = compactCanvasSelection(req.body?.canvasSelection);
         const workspace = ensureSiteWorkspace(config);
         const prompt = String(req.body?.prompt || "");
         if (!prompt.trim()) return res.status(400).json({ ok: false, error: "请输入任务内容" });
@@ -123,14 +125,14 @@ export function startHttpServer() {
             const attachmentRefs = session.setTurnAttachments(clientId, attachments);
             const chatMessage = {
                 sourceClientId: clientId,
-                message: { id: String(req.body?.messageId || Date.now()), clientMessageId: String(req.body?.messageId || ""), threadId, role: "user", text: String(req.body?.messageText || prompt || `发送了 ${attachments.length} 张图片`) },
+                message: { id: String(req.body?.messageId || Date.now()), clientMessageId: String(req.body?.messageId || ""), threadId, role: "user", text: String(req.body?.messageText || prompt || `发送了 ${attachments.length} 张图片`), ...(canvasSelection.length ? { canvasSelection } : {}) },
             };
             let chatThreadId = "";
             const turnEmit = (type: string, payload: unknown) => {
                 const data = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : { value: payload };
                 session.emitThread(type, threadId, { ...data, thread_id: data.thread_id || threadId, threadId: data.threadId || threadId });
             };
-            void runCodexTurn(withAgentPrompt(withAttachmentContext(prompt, attachmentRefs)), turnEmit, attachments, {
+            void runCodexTurn(withAgentPrompt(withAttachmentContext(prompt, attachmentRefs, selectionContext)), turnEmit, attachments, {
                 threadId,
                 cwd: workspace.workspacePath,
                 appEmit: emit,
@@ -216,8 +218,42 @@ function validToken(req: Request, url: URL, token: string) {
     return url.searchParams.get("token") === token || header === token || (Array.isArray(header) && header.includes(token));
 }
 
-function withAttachmentContext(prompt: string, attachments: Array<{ id: string; name: string }>) {
-    if (!attachments.length) return prompt;
-    const list = attachments.map((item, index) => `${index + 1}. attachmentId=${item.id}, name=${JSON.stringify(item.name)}`).join("\n");
-    return `${prompt}\n\n本轮可用图片附件（顺序与图片输入一致）：\n${list}\n需要把附件放入画布或作为生成参考图时，先调用 canvas_create_attachment_nodes，再使用返回的画布节点 ID 创建生成流程。`;
+function withAttachmentContext(prompt: string, attachments: Array<{ id: string; name: string }>, selectionContext = "") {
+    const sections = [prompt];
+    if (attachments.length) {
+        const list = attachments.map((item, index) => `${index + 1}. attachmentId=${item.id}, name=${JSON.stringify(item.name)}`).join("\n");
+        sections.push(`本轮可用图片附件（顺序与图片输入一致）：\n${list}\n需要把附件放入画布或作为生成参考图时，先调用 canvas_create_attachment_nodes，再使用返回的画布节点 ID 创建生成流程。`);
+    }
+    if (selectionContext.trim() && !prompt.includes("[[CANVAS_SELECTION_CONTEXT]]")) sections.push(selectionContext.trim());
+    return sections.join("\n\n");
+}
+
+function compactCanvasSelection(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return value.slice(0, 64).flatMap((raw) => {
+        if (!raw || typeof raw !== "object") return [];
+        const item = raw as Record<string, unknown>;
+        const id = safeSelectionText(item.id, 160);
+        if (!id) return [];
+        const type = safeSelectionText(item.type, 80) || "node";
+        const title = safeSelectionText(item.title, 160) || type;
+        const summary = safeSelectionText(item.summary, 300);
+        const status = safeSelectionText(item.status, 80);
+        return [{ id, type, title, ...(summary ? { summary } : {}), ...(status ? { status } : {}) }];
+    });
+}
+
+function safeSelectionText(value: unknown, maxLength: number) {
+    if (typeof value !== "string") return "";
+    const text = value.replace(/[\r\n\t]+/g, " ").trim();
+    if (!text || /(?:data:|blob:|\/api\/media\/)/i.test(text)) return "";
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function sanitizeSelectionContext(value: string) {
+    return value
+        .replace(/data:[^\s)]+/gi, "[媒体已省略]")
+        .replace(/blob:[^\s)]+/gi, "[媒体已省略]")
+        .replace(/\/api\/media\/[^\s)]+/gi, "[媒体已省略]")
+        .slice(0, 12000);
 }

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, Tooltip } from "antd";
-import { ArrowUp, CheckCircle2, CircleAlert, ImagePlus, LoaderCircle, Square, UserRound, Wrench, X, XCircle } from "lucide-react";
+import { ArrowUp, CheckCircle2, CircleAlert, FileText, Group, Image as ImageIcon, ImagePlus, Layers2, LoaderCircle, Music2, Settings2, Square, UserRound, Video, Wrench, X, XCircle } from "lucide-react";
 import { Streamdown } from "streamdown";
 
 import { isPlainEnterKey } from "@/lib/keyboard-event";
 import { canvasThemes } from "@/lib/canvas-theme";
+import { agentSelectionTypeLabel, type AgentCanvasSelectionItem } from "@/lib/agent/agent-selection";
 import type { LocalUser } from "@/stores/use-user-store";
 
 export type CanvasAgentChatAttachment = { id: string; name: string; url: string };
@@ -16,6 +17,8 @@ export type CanvasAgentChatMessage = {
     meta?: string;
     detail?: unknown;
     attachments?: CanvasAgentChatAttachment[];
+    /** Canvas elements that were selected when this user message was sent. */
+    canvasSelection?: AgentCanvasSelectionItem[];
     /** Present while the message is actively streaming; cleared on completion. */
     streamId?: string;
     /** The text is an incremental delta and should be merged with the previous chunk. */
@@ -62,6 +65,7 @@ export function AgentChatMessage({ item, theme, user, onRejectTool, onApproveToo
                         : { color }
                 }
             >
+                {isUser && item.canvasSelection?.length ? <AgentCanvasSelectionStrip items={item.canvasSelection} theme={theme} compact /> : null}
                 {isUser ? (
                     <div className="whitespace-pre-wrap break-words">{item.text}</div>
                 ) : (
@@ -166,6 +170,7 @@ export function AgentWorkingMessage({ theme }: { theme: (typeof canvasThemes)[ke
 export function AgentChatComposer({
     prompt,
     attachments = [],
+    selectedNodes = [],
     disabled,
     sending,
     placeholder,
@@ -179,6 +184,7 @@ export function AgentChatComposer({
 }: {
     prompt: string;
     attachments?: CanvasAgentChatAttachment[];
+    selectedNodes?: AgentCanvasSelectionItem[];
     disabled?: boolean;
     sending?: boolean;
     placeholder: string;
@@ -195,6 +201,7 @@ export function AgentChatComposer({
     return (
         <div className="px-2 pb-2 pt-2" onWheelCapture={(event) => event.stopPropagation()}>
             <div className="rounded-[24px] border px-3 pb-3 pt-3 shadow-lg" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke }}>
+                {selectedNodes.length ? <AgentCanvasSelectionStrip items={selectedNodes} theme={theme} /> : null}
                 {attachments.length ? (
                     <div className="thin-scrollbar mb-2 flex gap-2 overflow-x-auto pb-1">
                         {attachments.map((item) => (
@@ -307,6 +314,72 @@ function AgentMessageAttachments({ attachments }: { attachments: CanvasAgentChat
             ))}
         </div>
     );
+}
+
+/**
+ * A compact, non-interactive confirmation of the canvas context attached to a
+ * prompt.  The strip intentionally carries only compact labels and icons; the
+ * actual snapshot/image payload is assembled by the panel when the prompt is
+ * sent.
+ */
+function AgentCanvasSelectionStrip({ items, theme, compact = false }: { items: AgentCanvasSelectionItem[]; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; compact?: boolean }) {
+    const visibleItems = items.slice(0, 4);
+    const hiddenCount = Math.max(0, items.length - visibleItems.length);
+    return (
+        <div className="thin-scrollbar mb-2 flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5" role="group" aria-live="polite" aria-label={`已选 ${items.length} 个画布元素`}>
+            <span
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-1.5 text-[11px] font-medium"
+                style={{ background: theme.toolbar.activeBg, borderColor: theme.node.stroke, color: theme.toolbar.activeText }}
+                title={`当前对话包含 ${items.length} 个已选画布元素`}
+            >
+                <Layers2 className="size-3.5" />
+                <span>{compact ? `已选 ${items.length}` : `画布选区 ${items.length}`}</span>
+            </span>
+            {visibleItems.map((item) => <AgentCanvasSelectionChip key={item.id} item={item} theme={theme} />)}
+            {hiddenCount ? (
+                <span className="inline-flex h-7 shrink-0 items-center rounded-md border px-1.5 text-[11px]" style={{ borderColor: theme.node.stroke, color: theme.node.muted }} title={`还有 ${hiddenCount} 个已选画布元素`}>
+                    +{hiddenCount}
+                </span>
+            ) : null}
+        </div>
+    );
+}
+
+function AgentCanvasSelectionChip({ item, theme }: { item: AgentCanvasSelectionItem; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
+    const title = item.title?.trim() || agentSelectionTypeLabel(item.type);
+    const summary = item.summary?.trim();
+    return (
+        <Tooltip title={summary ? `${title} · ${summary}` : title}>
+            <span
+                className="inline-flex h-7 max-w-[170px] shrink-0 items-center gap-1.5 rounded-md border px-1.5 text-[11px] leading-none"
+                style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+                aria-label={`已选画布元素：${title}`}
+            >
+                <AgentCanvasSelectionPreview item={item} />
+                <span className="min-w-0 truncate">{title}</span>
+            </span>
+        </Tooltip>
+    );
+}
+
+function AgentCanvasSelectionPreview({ item }: { item: AgentCanvasSelectionItem }) {
+    const type = String(item.type || "").toLowerCase();
+    const Icon = selectionIcon(type);
+    return (
+        <span className="grid size-5 shrink-0 place-items-center" aria-hidden="true">
+            <Icon className="size-3.5 opacity-75" />
+        </span>
+    );
+}
+
+function selectionIcon(type: string) {
+    if (type === "image" || type.endsWith(":image")) return ImageIcon;
+    if (type === "video" || type.endsWith(":video")) return Video;
+    if (type === "audio" || type.endsWith(":audio")) return Music2;
+    if (type === "config" || type.endsWith(":config")) return Settings2;
+    if (type === "text" || type.endsWith(":text")) return FileText;
+    if (type === "group" || type.endsWith(":group")) return Group;
+    return Square;
 }
 
 function toolCardState(title: string, text: string, detail?: unknown) {

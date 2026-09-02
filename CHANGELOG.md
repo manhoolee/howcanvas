@@ -2,6 +2,7 @@
 
 ## Unreleased
 
++ [新增] 画布 Agent 对话会携带当前选中元素的安全摘要，并在输入区与已发送的用户消息中显示节点类型图标、名称和选中数量，便于确认上下文范围。
 + [新增] 画布 Agent 接入六个视觉工作台 Skill，并增加模型可调用的 `skill({ name })` 入口；支持视觉任务路由、Prompt 优化、图像生成及中式仙境、Oscar 导演摄影、FANTASY Photo Utility 专项。详见 [画布 Agent 视觉 Skill 接入说明](docs/VISUAL_SKILLS_CANVAS_AGENT.md) 与 [2026-09-01 修改档案](docs/CHANGE_ARCHIVE_2026-09-01_VISUAL_SKILLS.md)。
 + [修复] 修正画布 Agent 多渠道文本模型映射与失效配置清理，并透传服务器返回的具体鉴权/模型权限错误。
 + [修复] 修复画布 Agent 将普通 JSON 当成空 SSE、增量文字丢失及异步失败不显示结果的问题。

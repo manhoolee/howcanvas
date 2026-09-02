@@ -367,6 +367,7 @@ function InfiniteCanvasPage() {
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
     const [projectLoaded, setProjectLoaded] = useState(false);
+    const [projectLoadedId, setProjectLoadedId] = useState<string | null>(null);
     const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
     const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
@@ -734,6 +735,15 @@ function InfiniteCanvasPage() {
     useEffect(() => {
         if (!hydrated) return;
         setProjectLoaded(false);
+        setProjectLoadedId(null);
+        // Clear the previous project's live selection before asynchronous
+        // media hydration finishes, so Agent context cannot leak across tabs.
+        nodesRef.current = [];
+        connectionsRef.current = [];
+        selectedNodeIdsRef.current = new Set();
+        setNodes([]);
+        setConnections([]);
+        setSelectedNodeIds(new Set());
         const project = openProject(projectId);
         if (!project) {
             navigate("/canvas", { replace: true });
@@ -764,6 +774,7 @@ function InfiniteCanvasPage() {
                 showImageInfo: project.showImageInfo || false,
             };
             setHistoryState({ canUndo: false, canRedo: false });
+            setProjectLoadedId(projectId);
             setProjectLoaded(true);
         };
         void restore();
@@ -1142,6 +1153,7 @@ function InfiniteCanvasPage() {
     const { applyAgentOps } = useAgentBridge({
         projectId,
         title: currentProject?.title,
+        projectLoaded: projectLoaded && projectLoadedId === projectId,
         nodes,
         connections,
         selectedNodeIds,
