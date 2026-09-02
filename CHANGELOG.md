@@ -2,6 +2,9 @@
 
 ## Unreleased
 
++ [新增] 画布 Agent 接入六个视觉工作台 Skill，并增加模型可调用的 `skill({ name })` 入口；支持视觉任务路由、Prompt 优化、图像生成及中式仙境、Oscar 导演摄影、FANTASY Photo Utility 专项。详见 [画布 Agent 视觉 Skill 接入说明](docs/VISUAL_SKILLS_CANVAS_AGENT.md) 与 [2026-09-01 修改档案](docs/CHANGE_ARCHIVE_2026-09-01_VISUAL_SKILLS.md)。
++ [修复] 修正画布 Agent 多渠道文本模型映射与失效配置清理，并透传服务器返回的具体鉴权/模型权限错误。
+
 ## v0.12.4 - 2026-08-29
 
 + [新增] 生图工作台与画布支持独立的「电影风格」入口，可选择摄影配方、影片类型及八组摄影维度；选择后直接合并到提示词框，生成记录保留原始/最终提示词和风格版本，重试与后台恢复沿用同一配方。

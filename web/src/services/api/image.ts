@@ -64,7 +64,8 @@ type ResponseApiPayload = {
     id?: string;
     output?: ResponseApiOutputItem[];
     output_text?: string;
-    error?: { message?: string };
+    error?: { message?: string } | string;
+    message?: string;
     code?: number;
     msg?: string;
 };
@@ -420,11 +421,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function responseErrorMessage(value: unknown) {
+    if (typeof value === "string") return value.trim();
     if (!isRecord(value)) return "";
     const error = isRecord(value.error) ? value.error : undefined;
     const response = isRecord(value.response) ? value.response : undefined;
     const responseError = response && isRecord(response.error) ? response.error : undefined;
-    return stringValue(value.msg) || stringValue(error?.message) || stringValue(responseError?.message);
+    // 后端错误统一使用 `{ error: string }`，上游 OpenAI/Gemini 也可能返回
+    // `{ message }` 或嵌套 error；先保留服务端给出的具体原因，再按状态码
+    // 映射通用提示，避免把“模型未授权/账户无权限”误报成 API Key 失效。
+    return stringValue(value.msg) || stringValue(value.message) || stringValue(value.error) || stringValue(error?.message) || stringValue(responseError?.message) || stringValue(response?.error);
 }
 
 function stringValue(value: unknown) {
@@ -432,12 +437,14 @@ function stringValue(value: unknown) {
 }
 
 function validateResponsePayload(payload: ResponseApiPayload) {
-    if (typeof payload.code === "number" && payload.code !== 0) throw new Error(payload.msg || "请求失败");
-    if (payload.error?.message) throw new Error(payload.error.message);
+    const detail = responseErrorMessage(payload);
+    if (typeof payload.code === "number" && payload.code !== 0) throw new Error(detail || payload.msg || "请求失败");
+    if (detail) throw new Error(detail);
 }
 
 function validateGeminiPayload(payload: GeminiPayload) {
-    if (payload.error?.message) throw new Error(payload.error.message);
+    const detail = responseErrorMessage(payload);
+    if (detail) throw new Error(detail);
     if (payload.promptFeedback?.blockReason) throw new Error(`Gemini 拒绝了本次请求：${payload.promptFeedback.blockReason}`);
 }
 

@@ -1,6 +1,6 @@
 # HowCanvas 开发文档
 
-本文档面向参与开发、维护和部署 HowCanvas 的开发者。项目处于持续开发阶段，数据结构和接口可能变化；涉及用户数据、计费或生产部署的改动，应先阅读 `DEBUG_LOG.md` 和 `SECURITY.md`。
+本文档面向参与开发、维护和部署 HowCanvas 的开发者。项目处于持续开发阶段，数据结构和接口可能变化；涉及用户数据、计费或生产部署的改动，应先阅读对应的修改档案和 `SECURITY.md`。
 
 ## 1. 项目概览
 
@@ -46,7 +46,7 @@ gateway (nginx)
 ├── Dockerfile                   # 前端生产镜像
 ├── docker-compose.deploy.yml    # app/backend/gateway 生产编排
 ├── nginx.deploy.conf            # 生产网关路由
-├── DEBUG_LOG.md                 # 问题定位和修改记录
+├── docs/CHANGE_ARCHIVE_*.md     # 重要改动、部署和回滚档案
 └── PROJECT_REVIEW_*.md          # 阶段性项目 review
 ```
 
@@ -389,13 +389,14 @@ curl -fsS http://127.0.0.1/api/health
 - 是否为网络请求增加错误处理、超时或取消？
 - 是否同步更新 TypeScript 类型和 API 方法？
 - 是否运行 `npm test` 或至少运行受影响模块的检查？
-- 是否更新 `DEBUG_LOG.md` 和相关开发文档？
+- 是否更新对应的修改档案和相关开发文档？
 - 是否检查日志、文档和提交内容中没有 API Key、密码或私钥？
 
 ## 14. 相关文档
 
 - [README.md](../README.md)：项目介绍、快速开始和生产部署概览
-- [DEBUG_LOG.md](../DEBUG_LOG.md)：问题定位与修改记录
+- [VISUAL_SKILLS_CANVAS_AGENT.md](VISUAL_SKILLS_CANVAS_AGENT.md)：画布 Agent 视觉 Skill 接入、调用契约和维护说明
+- [CHANGE_ARCHIVE_2026-09-01_VISUAL_SKILLS.md](CHANGE_ARCHIVE_2026-09-01_VISUAL_SKILLS.md)：本次上线的代码、部署、验证和回滚档案
 - [PROJECT_REVIEW_2026-07-28.md](PROJECT_REVIEW_2026-07-28.md)：阶段性项目 review
 - [server/.env.example](../server/.env.example)：生产配置模板
 - [SECURITY.md](../SECURITY.md)：安全问题报告说明

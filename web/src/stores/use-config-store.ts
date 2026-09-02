@@ -144,7 +144,7 @@ export function guessCapability(name: string): ModelCapability {
 function findChannelModel(config: AiConfig, value: string): { channel: ModelChannel; model: ChannelModel } | null {
     const decoded = decodeChannelModel(value);
     const name = decoded?.model || value;
-    const channel = decoded ? config.channels.find((item) => item.id === decoded.channelId) : config.channels.find((item) => item.models.some((model) => model.name === name));
+    const channel = decoded ? config.channels.find((item) => item.id === decoded.channelId || item.id === `srv_${decoded.channelId}`) : config.channels.find((item) => item.models.some((model) => model.name === name));
     const model = channel?.models.find((item) => item.name === name);
     return channel && model ? { channel, model } : null;
 }
@@ -169,9 +169,13 @@ export function resolveModelScript(config: AiConfig, value: string) {
 }
 
 function isAiConfigReady(config: AiConfig, model: string) {
+    const selection = model.trim();
+    // 带渠道前缀的选择必须精确命中，失效模型不能静默回退到首个渠道，
+    // 否则会把请求发到错误的 API Key 或错误的权限范围。
+    if (!selection || (decodeChannelModel(selection) && !findChannelModel(config, selection))) return false;
     const channel = resolveModelChannel(config, model);
     const usesServerProxy = channel.baseUrl.trim().startsWith("/api/ai/");
-    return Boolean(model.trim() && channel.baseUrl.trim() && (usesServerProxy || channel.apiKey.trim()));
+    return Boolean(channel.baseUrl.trim() && (usesServerProxy || channel.apiKey.trim()));
 }
 
 export const useConfigStore = create<ConfigStore>()(
@@ -314,7 +318,7 @@ export function modelOptionName(value: string) {
 export function modelOptionLabel(config: AiConfig, value: string) {
     const decoded = decodeChannelModel(value);
     if (!decoded) return value;
-    const channel = config.channels.find((item) => item.id === decoded.channelId);
+    const channel = config.channels.find((item) => item.id === decoded.channelId || item.id === `srv_${decoded.channelId}`);
     return channel ? `${decoded.model}（${channel.name}）` : decoded.model;
 }
 
@@ -327,8 +331,8 @@ export function normalizeModelOptionValue(value: string | undefined, channels: M
     if (!model) return "";
     const decoded = decodeChannelModel(model);
     if (decoded) {
-        const channel = channels.find((item) => item.id === decoded.channelId);
-        return channel && channel.models.some((item) => item.name === decoded.model) ? model : "";
+        const channel = channels.find((item) => item.id === decoded.channelId || item.id === `srv_${decoded.channelId}`);
+        return channel && channel.models.some((item) => item.name === decoded.model) ? encodeChannelModel(channel.id, decoded.model) : "";
     }
     const channel = channels.find((item) => item.models.some((entry) => entry.name === model)) || channels[0];
     return channel && channel.models.some((item) => item.name === model) ? encodeChannelModel(channel.id, model) : model;
@@ -337,7 +341,7 @@ export function normalizeModelOptionValue(value: string | undefined, channels: M
 export function resolveModelChannel(config: AiConfig, value: string) {
     const decoded = decodeChannelModel(value);
     const model = decoded?.model || value;
-    const matched = decoded ? config.channels.find((channel) => channel.id === decoded.channelId) : config.channels.find((channel) => channel.models.some((item) => item.name === model));
+    const matched = decoded ? config.channels.find((channel) => channel.id === decoded.channelId || channel.id === `srv_${decoded.channelId}`) : config.channels.find((channel) => channel.models.some((item) => item.name === model));
     return matched || config.channels[0] || createModelChannel({ id: "default", name: "默认渠道", baseUrl: config.baseUrl, apiKey: config.apiKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })) });
 }
 

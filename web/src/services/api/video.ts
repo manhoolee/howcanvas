@@ -189,7 +189,7 @@ async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: st
         if (!created.id) throw new Error("视频接口没有返回任务 ID");
         return { id: created.id, provider: "openai", model };
     } catch (error) {
-        throw new Error(readAxiosError(error, "视频任务创建失败"));
+        throw new Error(await readAxiosError(error, "视频任务创建失败"));
     }
 }
 
@@ -206,7 +206,7 @@ async function pollOpenAIVideoTask(config: AiConfig, task: VideoGenerationTask, 
         if (video.status === "failed" || video.status === "cancelled") return { status: "failed", error: readApiErrorMessage(video.error?.message) || "视频生成失败" };
         return { status: "pending" };
     } catch (error) {
-        throw new Error(readAxiosError(error, "视频任务查询失败"));
+        throw new Error(await readAxiosError(error, "视频任务查询失败"));
     }
 }
 
@@ -248,7 +248,7 @@ async function createSeedanceTask(config: AiConfig, model: string, prompt: strin
         if (!created.id) throw new Error("Seedance 接口没有返回任务 ID");
         return { id: created.id, provider: "seedance", model };
     } catch (error) {
-        throw new Error(readAxiosError(error, "Seedance 任务创建失败"));
+        throw new Error(await readAxiosError(error, "Seedance 任务创建失败"));
     }
 }
 
@@ -261,7 +261,7 @@ async function pollSeedanceTask(config: AiConfig, task: VideoGenerationTask, opt
         if (state.status === "failed" || state.status === "cancelled" || state.status === "expired") return { status: "failed", error: readApiErrorMessage(state.error?.message) || `Seedance 视频生成${state.status === "expired" ? "超时" : "失败"}` };
         return { status: "pending" };
     } catch (error) {
-        throw new Error(readAxiosError(error, "Seedance 任务查询失败"));
+        throw new Error(await readAxiosError(error, "Seedance 任务查询失败"));
     }
 }
 
@@ -315,7 +315,7 @@ async function createGrokVideoTask(config: AiConfig, model: string, prompt: stri
         if (!response?.task_id) throw new Error("Grok Video V2 接口没有返回 task_id");
         return { id: response.task_id, provider: "grok-v2", model };
     } catch (error) {
-        throw new Error(readAxiosError(error, "Grok Video V2 任务创建失败"));
+        throw new Error(await readAxiosError(error, "Grok Video V2 任务创建失败"));
     }
 }
 
@@ -332,7 +332,7 @@ async function pollGrokVideoTask(config: AiConfig, task: VideoGenerationTask, op
         if (status === "FAILURE") return { status: "failed", error: response.fail_reason || "Grok Video V2 生成失败" };
         return { status: "pending" };
     } catch (error) {
-        throw new Error(readAxiosError(error, "Grok Video V2 任务查询失败"));
+        throw new Error(await readAxiosError(error, "Grok Video V2 任务查询失败"));
     }
 }
 
@@ -366,7 +366,7 @@ async function createMiniMaxH3Task(config: AiConfig, model: string, prompt: stri
         if (!response.data?.task_id) throw new Error("MiniMax H3 接口没有返回 task_id");
         return { id: response.data.task_id, provider: "minimax-h3", model };
     } catch (error) {
-        throw new Error(readAxiosError(error, "MiniMax H3 视频任务创建失败"));
+        throw new Error(await readAxiosError(error, "MiniMax H3 视频任务创建失败"));
     }
 }
 
@@ -384,7 +384,7 @@ async function pollMiniMaxH3Task(config: AiConfig, task: VideoGenerationTask, op
             const seconds = Number(error.response.headers?.["retry-after"]);
             return { status: "pending", retryAfterMs: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 60_000 };
         }
-        throw new Error(readAxiosError(error, "MiniMax H3 视频任务查询失败"));
+        throw new Error(await readAxiosError(error, "MiniMax H3 视频任务查询失败"));
     }
 }
 
@@ -422,7 +422,7 @@ async function createCompatibleGrokVideoTask(config: AiConfig, model: string, pr
         if (!created.id) throw new Error("Grok Video 3 接口没有返回任务 ID");
         return { id: created.id, provider: "openai", model };
     } catch (error) {
-        throw new Error(readAxiosError(error, "Grok Video 3 视频任务创建失败"));
+        throw new Error(await readAxiosError(error, "Grok Video 3 视频任务创建失败"));
     }
 }
 
@@ -610,14 +610,23 @@ function readApiErrorMessage(value: unknown): string {
         }
     }
     if (typeof value !== "object") return "";
-    const payload = value as { msg?: unknown; message?: unknown; error?: { message?: unknown } };
-    return readApiErrorMessage(payload.msg) || readApiErrorMessage(payload.message) || readApiErrorMessage(payload.error?.message);
+    const payload = value as { msg?: unknown; message?: unknown; error?: unknown };
+    // 服务端代理返回 `{ error: string }`，不能只读取 error.message，
+    // 否则模型/权限校验的 403 会被误映射成泛化鉴权提示。
+    return readApiErrorMessage(payload.msg) || readApiErrorMessage(payload.message) || readApiErrorMessage(payload.error);
 }
 
-function readAxiosError(error: unknown, fallback: string) {
+async function readAxiosError(error: unknown, fallback: string) {
     if (axios.isCancel(error)) return "请求已取消";
     if (axios.isAxiosError<{ error?: { message?: string }; msg?: string; message?: string; code?: number | string }>(error)) {
-        const responseData = error.response?.data;
+        let responseData: unknown = error.response?.data;
+        if (typeof Blob !== "undefined" && responseData instanceof Blob && (responseData.type.includes("json") || responseData.type.startsWith("text/"))) {
+            const text = (await responseData.text()).trim();
+            if (text) {
+                try { responseData = JSON.parse(text); }
+                catch { return text.slice(0, 300); }
+            }
+        }
         return readApiErrorMessage(responseData) || statusMessage(error.response?.status, fallback);
     }
     if (error instanceof DOMException && error.name === "AbortError") return "请求已取消";
@@ -632,14 +641,15 @@ function statusMessage(status: number | undefined, fallback: string) {
 
 async function assertVideoBlob(blob: Blob) {
     if (!blob.type.includes("json")) return;
-    let payload: { code?: number; msg?: string; error?: { message?: string } };
+    let payload: { code?: number; msg?: string; message?: string; error?: { message?: string } | string };
     try {
-        payload = JSON.parse(await blob.text()) as { code?: number; msg?: string; error?: { message?: string } };
+        payload = JSON.parse(await blob.text()) as { code?: number; msg?: string; message?: string; error?: { message?: string } | string };
     } catch {
         return;
     }
-    if (typeof payload.code === "number" && payload.code !== 0) throw new Error(readApiErrorMessage(payload) || "视频下载失败");
-    if (payload.error?.message) throw new Error(readApiErrorMessage(payload.error.message) || payload.error.message);
+    const detail = readApiErrorMessage(payload);
+    if (typeof payload.code === "number" && payload.code !== 0) throw new Error(detail || "视频下载失败");
+    if (detail) throw new Error(detail);
 }
 
 function isPublicMediaUrl(value: string) {

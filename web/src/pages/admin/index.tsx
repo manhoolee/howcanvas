@@ -722,6 +722,12 @@ const AGENT_SKILL_OPTIONS: { value: AgentSkillId; label: string; description: st
     { value: "video-creation", label: "视频创作", description: "设计动作、镜头、时长与视频参数" },
     { value: "canvas-orchestration", label: "画布编排", description: "创建提示词、配置、结果节点并连线" },
     { value: "quality-review", label: "质量检查", description: "检查结果并给出下一轮优化建议" },
+    { value: "visual-workbench-controller", label: "视觉工作流控制器", description: "路由视觉任务并编排专项 Skill" },
+    { value: "visual-prompt-optimizer", label: "视觉 Prompt 优化器", description: "压缩冲突并编译模型可执行提示词" },
+    { value: "visual-image-generator", label: "视觉图像生成器", description: "校验参数后执行图片生成或编辑" },
+    { value: "chinese-fairyland-suite", label: "中式仙境", description: "天宫、悬山、云海水境与东方超现实" },
+    { value: "oscar-director-cinematography", label: "Oscar 导演摄影", description: "导演语言、镜头调度、光线与色彩" },
+    { value: "fantasy-photo-utility", label: "FANTASY Photo Utility", description: "旧照片、车窗风景与极简 Logo" },
 ];
 
 function AgentLlmSettingsCard({ channels, config, onChanged }: { channels: AdminAiChannel[]; config: ServerAgentLlmConfig; onChanged: () => void }) {

@@ -11,8 +11,9 @@ import { readImageMeta } from "@/lib/image-utils";
 import { randomId } from "@/lib/utils";
 import { uploadImage } from "@/services/image-storage";
 import { requestAgentLlmTurn, type ResponseInputMessage } from "@/services/api/image";
-import { backend, type AgentSkillId, type ServerAgentLlmConfig } from "@/services/api/backend";
-import { buildAgentLlmSystemPrompt, AGENT_LLM_SKILL_LABELS, expandCanvasTool, toolsForAgentSkills } from "@/lib/agent/agent-llm-skills";
+import { backend, getAuthEpoch, type AgentSkillId, type ServerAgentLlmConfig } from "@/services/api/backend";
+import { buildAgentLlmSystemPrompt, AGENT_LLM_SKILL_LABELS, expandCanvasTool, getAgentSkillDefinition, toolsForAgentSkills } from "@/lib/agent/agent-llm-skills";
+import { applyServerAiConfig, toFrontendServerModelSelection } from "@/lib/server-ai-config";
 import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useCurrentUser } from "@/stores/use-auth-store";
@@ -119,14 +120,23 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
 
     useEffect(() => {
         let active = true;
+        const requestEpoch = getAuthEpoch();
         setAgentLlmLoading(true);
         void backend
             .aiConfig()
             .then((data) => {
-                if (active) setAgentLlmConfig(data.agentLlm || DEFAULT_AGENT_LLM_CONFIG);
+                if (active && requestEpoch === getAuthEpoch()) {
+                    // 面板与登录后的全局配置请求可能并发完成；在启用 Agent 前
+                    // 先同步注入服务器代理渠道，避免首轮请求回退到本地空 Key 渠道。
+                    applyServerAiConfig(data);
+                    const next = data.agentLlm || DEFAULT_AGENT_LLM_CONFIG;
+                    // 后端保存的是 `channelId::model`，而前端服务器渠道带有
+                    // `srv_` 前缀；统一转换后才能让 Agent LLM 命中所选渠道。
+                    setAgentLlmConfig({ ...next, model: toFrontendServerModelSelection(next.model, data.channels, "text") });
+                }
             })
             .catch(() => {
-                if (active) setAgentLlmConfig(DEFAULT_AGENT_LLM_CONFIG);
+                if (active && requestEpoch === getAuthEpoch()) setAgentLlmConfig(DEFAULT_AGENT_LLM_CONFIG);
             })
             .finally(() => {
                 if (active) setAgentLlmLoading(false);
@@ -318,7 +328,13 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
         const input = payload.input || {};
         addEventLog(`Skill + LLM：${payload.name}`, payload, payload);
         let result: unknown;
-        if (payload.name === "canvas_get_state") {
+        if (payload.name === "skill") {
+            const requested = typeof input.name === "string" ? input.name : "";
+            if (!agentLlmConfig.skills.includes(requested as AgentSkillId)) throw new Error(`Skill 未启用：${requested || "未指定"}`);
+            const definition = getAgentSkillDefinition(requested);
+            if (!definition) throw new Error(`未知视觉 Skill：${requested}`);
+            result = { ok: true, loaded: true, name: definition.id, label: definition.label, instructions: definition.instructions };
+        } else if (payload.name === "canvas_get_state") {
             result = canvasContextRef.current?.snapshot || { error: "当前不在画布页" };
         } else if (payload.name === "canvas_get_selection") {
             const snapshot = canvasContextRef.current?.snapshot;
@@ -384,9 +400,17 @@ export function CanvasLocalAgentPanel({ embedded, headless, autoConnect }: { emb
             addMessage({ role: "error", title: "方案三未启用", text: "请管理员先在后台启用 Agent LLM 并选择文本模型。" });
             return;
         }
-        const model = agentLlmConfig.model || config.textModel;
+        const model = agentLlmConfig.model;
         if (!model) {
             addMessage({ role: "error", title: "未配置 Agent LLM 模型", text: "请管理员先在后台选择文本模型。" });
+            return;
+        }
+        const separator = model.indexOf("::");
+        const channelId = separator >= 0 ? model.slice(0, separator) : "";
+        const modelName = separator >= 0 ? model.slice(separator + 2) : "";
+        const channel = config.channels.find((item) => item.id === channelId);
+        if (!channel?.baseUrl.trim().startsWith("/api/ai/") || !modelName || !channel.models.some((item) => item.name === modelName && item.capability === "text")) {
+            addMessage({ role: "error", title: "Agent LLM 渠道未就绪", text: "服务器文本模型渠道尚未加载或已失效，请刷新页面或联系管理员。" });
             return;
         }
         const messageId = createId();
@@ -1398,6 +1422,7 @@ function isConnectionErrorMessage(item: AgentChatItem) {
 }
 
 function toolName(name: string) {
+    if (name === "skill") return "加载视觉 Skill";
     if (name === "canvas_apply_ops") return "画布操作";
     if (name === "canvas_get_state") return "读取画布";
     if (name === "canvas_get_selection") return "读取选区";
@@ -1452,6 +1477,7 @@ function parseToolArguments(value: string): Record<string, unknown> {
 }
 
 function toolResultSummary(name: string, result: unknown) {
+    if (name === "skill") return `已加载 ${(result as { label?: string })?.label || "视觉 Skill"}`;
     if (name === "canvas_apply_ops") return "已完成画布操作";
     if (name === "site_navigate") return `已打开 ${(result as { path?: string })?.path || "/"}`;
     if (name === "workbench_image_generate" || name === "workbench_video_generate") return siteToolSummary(name, result);

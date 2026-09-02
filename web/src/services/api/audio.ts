@@ -36,7 +36,7 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
                 const result = await runModelPlugin({ capability: "audio", script, config: requestConfig, prompt, params: { voice: normalizeAudioVoiceValue(config.audioVoice), format, speed: normalizeAudioSpeedValue(config.audioSpeed), instructions: config.audioInstructions.trim() }, signal: options?.signal });
                 return await audioPluginBlob(result, format);
             } catch (error) {
-                throw new Error(readAxiosError(error, "音频生成失败"));
+                throw new Error(await readAxiosError(error, "音频生成失败"));
             }
         }
         assertAudioConfig(requestConfig, model);
@@ -47,7 +47,7 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
             await assertAudioBlob(response.data);
             return response.data.type.startsWith("audio/") ? response.data : new Blob([response.data], { type: audioMimeType(format) });
         } catch (error) {
-            throw new Error(readAxiosError(error, "音频生成失败"));
+            throw new Error(await readAxiosError(error, "音频生成失败"));
         }
     });
 }
@@ -90,23 +90,45 @@ function assertAudioConfig(config: AiConfig, model: string) {
 
 async function assertAudioBlob(blob: Blob) {
     if (!blob.type.includes("json")) return;
-    let payload: { code?: number; msg?: string; error?: { message?: string } };
+    let payload: { code?: number; msg?: string; message?: string; error?: { message?: string } | string };
     try {
-        payload = JSON.parse(await blob.text()) as { code?: number; msg?: string; error?: { message?: string } };
+        payload = JSON.parse(await blob.text()) as { code?: number; msg?: string; message?: string; error?: { message?: string } | string };
     } catch {
         return;
     }
-    if (typeof payload.code === "number" && payload.code !== 0) throw new Error(payload.msg || "音频生成失败");
-    if (payload.error?.message) throw new Error(payload.error.message);
+    const detail = readApiErrorMessage(payload);
+    if (typeof payload.code === "number" && payload.code !== 0) throw new Error(detail || "音频生成失败");
+    if (detail) throw new Error(detail);
 }
 
-function readAxiosError(error: unknown, fallback: string) {
+async function readAxiosError(error: unknown, fallback: string) {
     if (axios.isCancel(error)) return "请求已取消";
-    if (axios.isAxiosError<{ error?: { message?: string }; msg?: string; code?: number }>(error)) {
-        const responseData = error.response?.data;
-        return responseData?.msg || responseData?.error?.message || statusMessage(error.response?.status, fallback);
+    if (axios.isAxiosError<{ error?: { message?: string } | string; msg?: string; code?: number }>(error)) {
+        let responseData: unknown = error.response?.data;
+        if (typeof Blob !== "undefined" && responseData instanceof Blob && (responseData.type.includes("json") || responseData.type.startsWith("text/"))) {
+            const text = (await responseData.text()).trim();
+            if (text) {
+                try { responseData = JSON.parse(text); }
+                catch { return text.slice(0, 300); }
+            }
+        }
+        return readApiErrorMessage(responseData) || statusMessage(error.response?.status, fallback);
     }
     return error instanceof Error ? error.message : fallback;
+}
+
+function readApiErrorMessage(value: unknown): string {
+    if (typeof value === "string") {
+        const text = value.trim();
+        if (!text) return "";
+        try { return readApiErrorMessage(JSON.parse(text)) || text; }
+        catch { return text; }
+    }
+    if (!value || typeof value !== "object") return "";
+    const payload = value as { msg?: unknown; message?: unknown; error?: unknown };
+    const nested = payload.error && typeof payload.error === "object" ? payload.error as { message?: unknown } : undefined;
+    return [payload.msg, payload.message, typeof payload.error === "string" ? payload.error : undefined, nested?.message]
+        .find((item): item is string => typeof item === "string" && item.trim().length > 0)?.trim() || "";
 }
 
 function statusMessage(status: number | undefined, fallback: string) {

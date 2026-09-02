@@ -37,7 +37,19 @@ const DATABASE_FILE = path.join(DATA_DIR, "server.sqlite");
 
 const ALL_PERMISSIONS = ["canvas", "image", "video", "prompts", "assets", "agent"];
 const USAGE_KINDS = ["image", "video", "audio", "text"];
-const AGENT_SKILL_IDS = ["image-creation", "video-creation", "canvas-orchestration", "quality-review"];
+const AGENT_SKILL_IDS = [
+    "image-creation",
+    "video-creation",
+    "canvas-orchestration",
+    "quality-review",
+    // Visual Workbench skills mirrored into the Canvas Agent.
+    "visual-workbench-controller",
+    "visual-prompt-optimizer",
+    "visual-image-generator",
+    "chinese-fairyland-suite",
+    "oscar-director-cinematography",
+    "fantasy-photo-utility",
+];
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
 const AUTH_COOKIE = "infinite_canvas_session";
 const ALLOW_REGISTRATION = process.env.ALLOW_REGISTRATION === "true";
@@ -258,7 +270,18 @@ let settings = loadJson(SETTINGS_FILE, null) || {
     agentLlm: {
         enabled: false,
         model: "",
-        skills: ["image-creation", "video-creation", "canvas-orchestration", "quality-review"],
+        skills: [
+            "image-creation",
+            "video-creation",
+            "canvas-orchestration",
+            "quality-review",
+            "visual-workbench-controller",
+            "visual-prompt-optimizer",
+            "visual-image-generator",
+            "chinese-fairyland-suite",
+            "oscar-director-cinematography",
+            "fantasy-photo-utility",
+        ],
     },
 };
 if (!settings.modelPricing || typeof settings.modelPricing !== "object") settings.modelPricing = {};
@@ -2389,7 +2412,7 @@ function publicChannel(c) {
     return { ...rest, hasKey: Boolean(apiKey), apiKeyMasked: maskKey(apiKey) };
 }
 function channelModelSelectionExists(selection, capability) {
-    return aiChannels.some((channel) => channel.models.some((model) => model.capability === capability && `${channel.id}::${model.name}` === selection));
+    return aiChannels.some((channel) => Array.isArray(channel?.models) && channel.models.some((model) => model.capability === capability && `${channel.id}::${model.name}` === selection));
 }
 function clearInvalidDefaultModels() {
     let changed = false;
@@ -2402,6 +2425,19 @@ function clearInvalidDefaultModels() {
     }
     return changed;
 }
+function clearInvalidAgentLlmModel() {
+    const selection = String(settings.agentLlm?.model || "").trim();
+    if (selection && !channelModelSelectionExists(selection, "text")) {
+        settings.agentLlm.model = "";
+        return true;
+    }
+    return false;
+}
+// 清理历史配置中已被删除或改为其它能力的模型，避免管理页和 Agent
+// 首次请求继续携带失效的渠道选择。
+const startupDefaultsChanged = clearInvalidDefaultModels();
+const startupAgentModelChanged = clearInvalidAgentLlmModel();
+if (startupDefaultsChanged || startupAgentModelChanged) persistSettings();
 function normalizeChannelBaseUrl(value) {
     const baseUrl = String(value ?? "").replace(/[\r\n]/g, "").trim();
     try {
@@ -2459,7 +2495,9 @@ app.patch("/api/admin/channels/:id", auth, adminOnly, (req, res) => {
     if (typeof apiFormat === "string") channel.apiFormat = nextApiFormat;
     if (Array.isArray(models)) channel.models = nextModels;
     persistChannels();
-    if (clearInvalidDefaultModels()) persistSettings();
+    const defaultsChanged = clearInvalidDefaultModels();
+    const agentModelChanged = clearInvalidAgentLlmModel();
+    if (defaultsChanged || agentModelChanged) persistSettings();
     res.json({ channel: publicChannel(channel) });
 });
 
@@ -2472,12 +2510,19 @@ app.delete("/api/admin/channels/:id", auth, adminOnly, (req, res) => {
     for (const key of Object.keys(settings.defaultModels)) {
         if (String(settings.defaultModels[key]).startsWith(`${req.params.id}::`)) settings.defaultModels[key] = "";
     }
+    clearInvalidAgentLlmModel();
     persistSettings();
     res.json({ ok: true });
 });
 
 app.put("/api/admin/settings", auth, adminOnly, (req, res) => {
     const { pricing, defaultPermissions, defaultCredits, modelPricing, defaultModels, agentLlm } = req.body || {};
+    // 在修改其它设置前校验 Agent LLM 选择，避免无效模型导致请求 400
+    // 但其它字段已经留在进程内存、随后被意外持久化。
+    const requestedAgentModel = agentLlm && typeof agentLlm === "object" ? String(agentLlm.model ?? "").trim() : "";
+    if (requestedAgentModel && (requestedAgentModel.length > 200 || !channelModelSelectionExists(requestedAgentModel, "text"))) {
+        return res.status(400).json({ error: "Agent LLM 文本模型不存在或能力不匹配" });
+    }
     if (defaultModels && typeof defaultModels === "object") {
         const updates = {};
         for (const kind of ["image", "video", "audio", "text"]) {
@@ -2508,9 +2553,7 @@ app.put("/api/admin/settings", auth, adminOnly, (req, res) => {
     if (Array.isArray(defaultPermissions)) settings.defaultPermissions = defaultPermissions.filter((p) => ALL_PERMISSIONS.includes(p));
     if (Number.isFinite(Number(defaultCredits)) && Number(defaultCredits) >= 0) settings.defaultCredits = Number(defaultCredits);
     if (agentLlm && typeof agentLlm === "object") {
-        const model = String(agentLlm.model ?? "").trim();
-        const modelExists = !model || channelModelSelectionExists(model, "text");
-        if (modelExists) settings.agentLlm.model = model.slice(0, 200);
+        settings.agentLlm.model = requestedAgentModel.slice(0, 200);
         if (typeof agentLlm.enabled === "boolean") settings.agentLlm.enabled = agentLlm.enabled;
         if (Array.isArray(agentLlm.skills)) settings.agentLlm.skills = agentLlm.skills.filter((skill) => AGENT_SKILL_IDS.includes(skill)).slice(0, 20);
     }

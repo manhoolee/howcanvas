@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { backend, bumpAuthEpoch, setToken, type ServerUser } from "@/services/api/backend";
+import { backend, bumpAuthEpoch, getAuthEpoch, setToken, type ServerUser } from "@/services/api/backend";
 import { applyServerAiConfig } from "@/lib/server-ai-config";
 import { DEFAULT_PRICING, DEFAULT_USER_PERMISSIONS, type PermissionKey, type Pricing } from "@/constant/permissions";
 import { setImageStorageOwner } from "@/services/image-storage";
@@ -45,9 +45,14 @@ type AuthState = {
     setDefaultPermissions: (permissions: PermissionKey[]) => void;
 };
 
-async function loadServerAiConfig() {
+async function loadServerAiConfig(userId: string) {
+    const requestEpoch = getAuthEpoch();
     try {
-        applyServerAiConfig(await backend.aiConfig());
+        const data = await backend.aiConfig();
+        // 登录/退出或切换账号期间，旧请求可能晚于新会话返回；禁止它把
+        // 上一个账号的渠道元数据和 Agent 配置重新注入当前页面。
+        if (requestEpoch !== getAuthEpoch() || useAuthStore.getState().currentUserId !== userId) return;
+        applyServerAiConfig(data);
     } catch {
         // 后端未配置 AI 信息时忽略
     }
@@ -119,7 +124,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             const { user } = await backend.me();
             set({ accounts: [user], currentUserId: user.id });
             bindCanvasOwner(user);
-            void loadServerAiConfig();
+            void loadServerAiConfig(user.id);
             if (user.role === "admin") void get().refreshAdminData();
         } catch {
             setToken("");
@@ -136,7 +141,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             setToken(token || "");
             set({ accounts: [user], currentUserId: user.id });
             bindCanvasOwner(user);
-            void loadServerAiConfig();
+            void loadServerAiConfig(user.id);
             return { ok: true };
         } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "注册失败" };
@@ -150,7 +155,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             setToken(token || "");
             set({ accounts: [user], currentUserId: user.id });
             bindCanvasOwner(user);
-            void loadServerAiConfig();
+            void loadServerAiConfig(user.id);
             if (user.role === "admin") void get().refreshAdminData();
             return { ok: true };
         } catch (error) {

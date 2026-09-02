@@ -184,7 +184,10 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
             baseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
             apiKey: "upstream-secret",
             apiFormat: "openai",
-            models: [{ name: "image-model", capability: "image" }],
+            models: [
+                { name: "image-model", capability: "image" },
+                { name: "text-model", capability: "text" },
+            ],
         }),
     });
     assert.equal(channelResponse.status, 200);
@@ -222,6 +225,23 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
     });
     assert.equal(validDefaultModel.status, 200);
     assert.equal(validDefaultModel.data.settings.defaultModels.image, `${channelId}::image-model`);
+
+    const validAgentLlm = await request(baseUrl, "/api/admin/settings", {
+        cookie: loginAdmin.cookie,
+        method: "PUT",
+        body: JSON.stringify({ agentLlm: { enabled: true, model: `${channelId}::text-model`, skills: ["canvas-orchestration"] } }),
+    });
+    assert.equal(validAgentLlm.status, 200);
+    assert.equal(validAgentLlm.data.settings.agentLlm.model, `${channelId}::text-model`);
+
+    const invalidAgentLlm = await request(baseUrl, "/api/admin/settings", {
+        cookie: loginAdmin.cookie,
+        method: "PUT",
+        body: JSON.stringify({ agentLlm: { enabled: true, model: `${channelId}::missing-text`, skills: ["canvas-orchestration"] } }),
+    });
+    assert.equal(invalidAgentLlm.status, 400);
+    const settingsAfterInvalidAgent = await request(baseUrl, "/api/admin/settings", { cookie: loginAdmin.cookie });
+    assert.equal(settingsAfterInvalidAgent.data.settings.agentLlm.model, `${channelId}::text-model`);
 
     const missingDefaultModel = await request(baseUrl, "/api/admin/settings", {
         cookie: loginAdmin.cookie,
@@ -510,6 +530,7 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
     assert.equal(channelWithoutDefaultModel.status, 200);
     const settingsAfterModelRemoval = await request(baseUrl, "/api/admin/settings", { cookie: loginAdmin.cookie });
     assert.equal(settingsAfterModelRemoval.data.settings.defaultModels.image, "");
+    assert.equal(settingsAfterModelRemoval.data.settings.agentLlm.model, "");
 
     const logout = await request(baseUrl, "/api/auth/logout", { cookie: imageCookie, method: "POST" });
     assert.equal(logout.status, 200);

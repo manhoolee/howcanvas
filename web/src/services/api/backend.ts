@@ -51,7 +51,17 @@ export type ServerSettings = {
     agentLlm: ServerAgentLlmConfig;
 };
 
-export type AgentSkillId = "image-creation" | "video-creation" | "canvas-orchestration" | "quality-review";
+export type AgentSkillId =
+    | "image-creation"
+    | "video-creation"
+    | "canvas-orchestration"
+    | "quality-review"
+    | "visual-workbench-controller"
+    | "visual-prompt-optimizer"
+    | "visual-image-generator"
+    | "chinese-fairyland-suite"
+    | "oscar-director-cinematography"
+    | "fantasy-photo-utility";
 export type ServerAgentLlmConfig = { enabled: boolean; model: string; skills: AgentSkillId[] };
 export type ServerCanvasProject = Record<string, unknown> & { id: string; ownerId?: string; updatedAt?: string };
 export type MediaScope = "canvas" | "workbench-image" | "workbench-video";
