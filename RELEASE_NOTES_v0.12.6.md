@@ -47,3 +47,14 @@
 - 真实登录账号下的“固定选区 → 连续对话 → 画布操作”仍需上线后人工回归。
 - 付费图片/视频生成仍会等待用户确认，本次不主动发起付费请求。
 - 公网 HTTPS、`COOKIE_SECURE=true` 和自动部署流水线仍待完成。
+
+## 生产上线记录
+
+- 上线时间：2026-09-02 22:30 CST。
+- 上线提交：`ce8d88acf348463caac866b1c373e1dc10f8c457`，生产 `VERSION=0.12.6`。
+- 仅重建并重启 `app`；`backend`、`gateway`、`ins` 和 `landing` 未重启，五个容器全部 healthy。
+- 新 `app` 镜像：`sha256:5ae8cd96813cc2c782ee2dd688f198591d7c32a88f7043b2c5381727a4bd0357`。
+- 回滚备份：`/opt/infinite-canvas/backups/pre-v0126-20260902-222633`；回滚镜像：`infinite-canvas-app:pre-v0126-20260902-222633`。
+- 备份校验和 SQLite `quick_check` 通过；`media_assets` 上线前后均为 682，`site_counters` 均为 1，`users.json` 均为 15。
+- `http://can.hoosland.com/`、`/api/health` 和 `/visual-workbench/` 均返回 HTTP 200；生产静态包已检出固定选区与任务执行契约文本。
+- 服务器保留既有运维/历史文档，本次只校验并上线运行代码、版本文件和当期发布记录。
