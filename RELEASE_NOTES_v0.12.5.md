@@ -15,9 +15,11 @@
 
 ## 升级前备份
 
-- 当前生产主站部署提交：`12ae85673ea5dd95ea84b2b362c8e9f33102dd6e`。
+- 当前生产主站部署提交：`cac0844c8d3f077cb4c4fa173251737bfd3708fc`。
+- v0.12.5 发布前的功能源码提交为 `12ae85673ea5dd95ea84b2b362c8e9f33102dd6e`，本次版本对齐仅增加版本和发布文档并重建 app。
 - 升级前备份 `server-data/`、`.env.deploy`、Compose/Nginx 配置及当前 `.deployed-commit`。
 - 本次路由修复已生成备份：`/opt/infinite-canvas/backups/restore-visual-workbench-20260902-082601/nginx.deploy.conf`。
+- 本次版本升级备份：`/opt/infinite-canvas/backups/pre-v0125-20260902-090919/`。
 - 代码回撤点：`v0.12.4`；发布提交完成后使用 `v0.12.5` 作为新回撤点。
 
 ## 配置变化
@@ -92,5 +94,5 @@ docker compose -f docker-compose.deploy.yml up -d --no-deps --force-recreate gat
 ## 生产记录
 
 - 环境：公网 HTTP，服务器 `114.132.45.243:2222`，目录 `/opt/infinite-canvas`。
-- 部署方式：手工 SSH/Compose；GitHub Actions 当前不自动更新生产服务器。
+- 部署方式：手工 SSH/Compose；GitHub Actions 当前不自动更新生产服务器。v0.12.5 已通过 SSH 仅重建 app 并将 `.deployed-commit` 对齐到发布提交。
 - 健康检查、回滚备份和未解决风险已记录在上述修改档案中。

@@ -3,7 +3,7 @@
 日期：2026-09-02
 对应版本：v0.12.5
 范围：HowCanvas 主站、画布 Agent、服务端 AI 代理、生产网关
-状态：主站代码已提交并部署；本地 Agent 发布与登录后端到端验收仍待完成
+状态：主站代码已提交、部署并通过健康检查；本地 Agent 发布与登录后端到端验收仍待完成
 
 ## 1. 背景与问题
 
@@ -70,9 +70,12 @@
 - 服务器：`114.132.45.243:2222`
 - 部署目录：`/opt/infinite-canvas`
 - 执行方式：通过已有 root SSH 会话执行恢复和容器操作；没有把密钥写入仓库或日志。
-- 主站部署标记：`/opt/infinite-canvas/.deployed-commit` = `12ae85673ea5dd95ea84b2b362c8e9f33102dd6e`
+- 首次功能部署标记：`12ae85673ea5dd95ea84b2b362c8e9f33102dd6e`。
+- v0.12.5 发布对齐后的部署标记：`/opt/infinite-canvas/.deployed-commit` = `cac0844c8d3f077cb4c4fa173251737bfd3708fc`
 - 路由恢复备份：`/opt/infinite-canvas/backups/restore-visual-workbench-20260902-082601/nginx.deploy.conf`
-- app、backend、gateway、地产工作台和 landing 容器均已检查；本次路由修复只重建 gateway。
+- v0.12.5 升级备份：`/opt/infinite-canvas/backups/pre-v0125-20260902-090919/`，包含发布前源码归档、SQLite 在线备份、配置和当前部署标记。
+- 首次路由修复只重建 gateway；版本对齐时按 SSH 仅重建 app，未重启 backend、数据卷或独立视觉工作台。
+- app、backend、gateway、地产工作台和 landing 容器均已检查并保持 healthy。
 
 生产检查结果：
 
