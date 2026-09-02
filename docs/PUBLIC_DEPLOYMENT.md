@@ -74,6 +74,15 @@ The production deployment directory is not converted into a Git worktree. Alignm
 - SHA-256 values for every Git-tracked path match between the local commit archive and the server deployment;
 - extra server-only files are explicitly excluded from the source manifest.
 
+If the independent Visual Workbench route is ever lost, run the pinned
+recovery script from a root shell on the server. It creates a timestamped
+configuration backup, verifies all route markers, tests Nginx, and recreates
+only `gateway`; a failed configuration test restores the backup automatically:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/manhoolee/howcanvas/e742829520777e44af6b01f8ffe63c36147f20c7/scripts/restore-visual-workbench-route.sh | bash
+```
+
 ## 6. Validation Gates
 
 Each release passes these gates in order:
