@@ -87,4 +87,4 @@ npm run test:agent
 - 当前没有可视化 Skill 菜单，入口是 LLM 函数工具和消息审计记录；
 - 六个视觉 Skill 是对工作台能力的画布侧精炼契约，不等同于把工作台目录中的全部文件动态挂载到浏览器；
 - `npm run test:agent` 在 Windows 上仍有一个既有的目录权限模式断言失败（`438 !== 448`），与本次画布 Skill 改动无关。
-- 当前源码的选区上下文尚未发布到 npm 默认 `latest` 的 `@basketikun/canvas-agent` 包；本地 Agent 使用前应按发布说明固定匹配版本或运行仓库构建产物。
+- 服务器“方案三：Skill + LLM”已与 `@basketikun/canvas-agent` 脱钩，选区上下文由主站前端直接传给服务器 AI 代理；`@basketikun/canvas-agent` 仅用于可选的本地 Codex/Claude 桥接模式，版本发布与本次服务器上线独立。

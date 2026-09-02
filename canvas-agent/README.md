@@ -2,6 +2,8 @@
 
 本地 Canvas Agent 用来连接画布网页和用户电脑上的 Codex / Claude Code。本地开发时优先连接 `http://localhost:3000`，不需要先使用线上站点。
 
+说明：本包只负责本地桥接和 MCP 服务；主站服务器的“方案三：Skill + LLM”已经与 `@basketikun/canvas-agent` 脱钩，服务器部署无需安装或发布本 npm 包。
+
 ## 启动
 
 ```bash

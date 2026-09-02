@@ -85,7 +85,7 @@ docker compose -f docker-compose.deploy.yml up -d --no-deps --force-recreate gat
 
 ## 已知事项与未完成验收
 
-- `canvas-agent/package.json` 仍为 `0.2.0`；npm 上该版本已存在，今天的源码没有进入 `npx @basketikun/canvas-agent` 默认安装结果。需单独发布并固定匹配版本。
+- 本次上线的服务器“方案三：Skill + LLM”已经与 `@basketikun/canvas-agent` 脱钩，不依赖 npm 包；该包只属于可选的本地 Codex/Claude 桥接模式，拥有独立版本和发布节奏，不构成 v0.12.5 服务器部署依赖。
 - 尚未完成已登录浏览器中的“选中元素—发送 Agent—显示图标/上下文—完整文字—实际修改画布”端到端回归。
 - Agent 仍需补齐 `content[]`/`output_text` 解析、SSE 断线保留已收文字、turn 状态轮询和控制面错误提示。
 - 本地 Agent 的 Codex 登录态属于运行它的用户；线上网页登录 Cookie 或服务器渠道 Key 不会替代本机 Codex 鉴权。
