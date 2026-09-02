@@ -85,3 +85,4 @@
 - 账户画布、工作台记录和“我的素材”已同步到项目后端；浏览器仍保留版本化缓存与媒体 Blob 缓存，不要把缓存误当服务器主数据。
 - 服务器管理的 AI API Key 只保存在 `server/data/channels.json`，前端只获得渠道和模型元数据；用户自己的 WebDAV 凭据仍属浏览器本地配置。
 - Docker 部署链路已验证前端、后端与网关三容器；公网上线仍必须单独验证 HTTPS、`COOKIE_SECURE`、持久化目录备份和健康检查。
+- 画布 Agent 发布前必须确认 `nginx.deploy.conf` 保留 `ins.hoosland.com/tools/visual-workbench/` 到 `172.19.0.1:13092/` 的独立代理路由；该工作台由服务器 systemd 服务托管，不是 `ins` 静态目录。生产更新时先做配置标记检查和 `nginx -t`，只重建 `gateway`，不得用缺少该路由的源码覆盖线上网关。
