@@ -3,7 +3,7 @@
 发布日期：2026-09-02
 发布范围：HowCanvas 主站、画布 Agent 集成、服务器 AI 代理与生产网关
 
-完整的开发、修改、部署和验收记录见：[2026-09-02 Canvas Agent 修改档案](docs/CHANGE_ARCHIVE_2026-09-02_CANVAS_AGENT.md)。
+完整的开发、修改、部署和验收记录见：[2026-09-02 Canvas Agent 修改档案](docs/CHANGE_ARCHIVE_2026-09-02_CANVAS_AGENT.md)；按时间整理的工作日志见：[2026-09-02 工作日志](docs/WORK_LOG_2026-09-02.md)。
 
 ## 本次发布
 

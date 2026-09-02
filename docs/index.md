@@ -33,6 +33,7 @@
 - [更新日志](/docs/progress/changelog)
 - [待测试](/docs/progress/pending-test)
 - [TODO](/docs/progress/todo)
+- [2026-09-02 工作日志](WORK_LOG_2026-09-02.md)
 
 ## 说明
 
