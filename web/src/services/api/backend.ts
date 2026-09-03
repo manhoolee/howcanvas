@@ -61,7 +61,8 @@ export type AgentSkillId =
     | "visual-image-generator"
     | "chinese-fairyland-suite"
     | "oscar-director-cinematography"
-    | "fantasy-photo-utility";
+    | "fantasy-photo-utility"
+    | "fantasy-visual-studio-suite";
 export type ServerAgentLlmConfig = { enabled: boolean; model: string; skills: AgentSkillId[] };
 export type ServerCanvasProject = Record<string, unknown> & { id: string; ownerId?: string; updatedAt?: string };
 export type MediaScope = "canvas" | "workbench-image" | "workbench-video";

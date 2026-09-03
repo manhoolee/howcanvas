@@ -5,6 +5,8 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+- 视觉工作台结构化 Prompt 库：管理员启用 `fantasy-visual-studio-suite` 后，画布 Agent 应能从 `prompt-library.json` 路由 Portrait、Editorial、Cinematic、Cultural Poster、Fun Social、Photo Utility 六套工作流；优化 Prompt 时应遵守 `agentContract.compileOrder`、主体保护和负面收敛规则，文字准确场景优先生成无字底图；Skill 列表、服务器过滤和管理员保存均应接受该 ID，旧有五个视觉专项行为不变。
+
 v0.12.5 已将以下变更部署到主站；本页保留真实账号、模型和本地 Agent 的人工回归项目，未通过验收前不要移入正式功能说明。
 
 - 视觉工作台线上入口：部署画布 Agent 后访问 `http://ins.hoosland.com/tools/visual-workbench` 应返回 `308` 并跳转到带斜杠地址；带斜杠页面应返回 HTML，`/api/health/ready` 应成功，且 `http://can.hoosland.com/api/health`、地产工作台路由仍正常。后续部署前应检查生产网关配置包含视觉工作台路由标记。

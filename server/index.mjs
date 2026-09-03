@@ -49,6 +49,7 @@ const AGENT_SKILL_IDS = [
     "chinese-fairyland-suite",
     "oscar-director-cinematography",
     "fantasy-photo-utility",
+    "fantasy-visual-studio-suite",
 ];
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
 const AUTH_COOKIE = "infinite_canvas_session";
@@ -281,6 +282,7 @@ let settings = loadJson(SETTINGS_FILE, null) || {
             "chinese-fairyland-suite",
             "oscar-director-cinematography",
             "fantasy-photo-utility",
+            "fantasy-visual-studio-suite",
         ],
     },
 };

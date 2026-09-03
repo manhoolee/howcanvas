@@ -728,6 +728,7 @@ const AGENT_SKILL_OPTIONS: { value: AgentSkillId; label: string; description: st
     { value: "chinese-fairyland-suite", label: "中式仙境", description: "天宫、悬山、云海水境与东方超现实" },
     { value: "oscar-director-cinematography", label: "Oscar 导演摄影", description: "导演语言、镜头调度、光线与色彩" },
     { value: "fantasy-photo-utility", label: "FANTASY Photo Utility", description: "旧照片、车窗风景与极简 Logo" },
+    { value: "fantasy-visual-studio-suite", label: "FANTASY Visual Studio", description: "人像、编辑海报、电影三联、文化海报与趣怪社媒" },
 ];
 
 function AgentLlmSettingsCard({ channels, config, onChanged }: { channels: AdminAiChannel[]; config: ServerAgentLlmConfig; onChanged: () => void }) {

@@ -1,0 +1,164 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "hoosland-visual-workbench-prompt-library",
+  "title": "视觉工作台三分类 Prompt 结构化手册",
+  "language": "zh-CN",
+  "source": {
+    "name": "视觉工作台三分类提示词手册",
+    "path": "F:/deepseekherness/hoosland-visual-workbench/doc/视觉工作台三分类提示词手册.md",
+    "normalizedAt": "2026-09-03",
+    "note": "本文件是供 Canvas Agent 路由和 Prompt 优化使用的结构化副本；原手册仍是扩展案例的来源。"
+  },
+  "agentContract": {
+    "taskModes": ["prompt_generate", "prompt_optimize", "visual_advice", "image_generate"],
+    "routeFirst": true,
+    "defaultAspectRatio": "16:9",
+    "defaultCount": 1,
+    "referenceModes": {
+      "none": "不使用参考图",
+      "reverse": "只提炼可观察的主体关系、景别、构图、光线、色彩和材质；不复制身份、文字、Logo 或 IP",
+      "img2img": "参考图作为直接输入，只保留用户指定的主体与结构",
+      "hybrid": "参考图提供视觉依据，Prompt 负责新增叙事与约束"
+    },
+    "compileOrder": ["subject_and_relations", "narrative_action", "environment_and_time", "shot_camera_composition", "lens_behavior", "lighting_color", "material_medium", "mood", "targeted_negative"],
+    "hardRules": [
+      "只保留一个主要视觉锚点；其他元素服务于主体",
+      "保留用户锁定的主体、动作、人数、地点、时代、道具、文字、比例和禁忌",
+      "先消解正向词与负面词、镜头与构图、风格与来源事实之间的冲突，再输出 Prompt",
+      "负面词只保留与本画面直接相关的约束，不堆通用画质词",
+      "参考图只陈述可观察事实，不推测身份、品牌、文字或不可见故事",
+      "用户要求只输出 Prompt 时不生成图片；只有明确生成/编辑时才执行生图",
+      "生成结果必须以后端任务状态为准，不把已提交、排队或任务 ID 描述为已完成"
+    ],
+    "outputContract": {
+      "promptOnly": ["正向 Prompt", "负面 Prompt", "保留/修正摘要"],
+      "imageRequest": ["最终 Prompt", "参考图模式", "比例/尺寸/质量/张数", "需要确认的费用或不可逆影响"],
+      "optimization": ["保留项", "删除或合并的冲突词", "最终 Prompt", "追加修复词（如有）"]
+    },
+    "conflictResolution": [
+      "用户明确指定 > 参考图可观察事实 > 当前套件默认值 > 通用审美建议",
+      "主体身份/文字/比例/必须保留项不可被风格词覆盖",
+      "同一维度出现相反词时保留更具体、更近主体的词",
+      "当信息过载时先删同义词和装饰词，保留空间因果、镜头和材质"
+    ]
+  },
+  "routes": [
+    {
+      "id": "chinese-fairyland",
+      "skillId": "chinese-fairyland-suite",
+      "label": "仙宫｜中式仙境 / 天工造境",
+      "intents": ["天宫", "悬山", "云海水境", "东方巨物", "神话设施", "中国古代建筑幻想"],
+      "selection": {"world_type": {"type": "single", "required": true, "options": ["九重天宫", "悬山仙境", "云海水境", "天界奇观", "巨构天界"]}, "subject": {"type": "single", "required": true}, "time_weather": {"type": "multi"}, "season_dynamic": {"type": "multi"}, "environment": {"type": "multi"}, "celestial_altitude": {"type": "multi"}, "scene": {"type": "single"}, "architecture": {"type": "multi"}, "architecture_relation": {"type": "multi"}, "scene_mechanism": {"type": "multi"}, "narrative_action": {"type": "multi"}, "character": {"type": "multi"}, "camera": {"type": "multi"}, "view_position": {"type": "multi"}, "composition": {"type": "multi"}, "lighting": {"type": "multi"}, "palette": {"type": "multi"}, "material": {"type": "multi"}, "mood": {"type": "multi"}},
+      "positivePools": {
+        "world_type": ["九重天宫", "悬山仙境", "云海水境", "天界奇观", "巨构天界"],
+        "time_weather": ["晨光", "日出", "夕阳", "月夜", "暴雨", "薄雾", "云雾", "风雪", "雨后初晴", "低云"],
+        "environment": ["云港", "云海", "天池", "镜湖", "瀑布", "雪岭", "竹林", "古松", "岩台", "悬崖"],
+        "altitude_and_support": ["位于地面云层之上", "宫阙由层叠云台承托", "宫殿建立在巨型浮空仙岛上", "悬空长桥横跨云海", "白玉天阶连接浮空宫阙", "云海位于宫殿下方", "云瀑从天城边缘坠入下层云海"],
+        "architecture": ["宋式", "汉代", "唐宋风格", "汉白玉台基", "重檐斗拱", "巨柱", "飞檐水榭", "青铜纹样", "白玉城墙", "暗朱红木构"],
+        "subjects": ["仙子", "修行者", "信使", "朝圣者", "观星者", "宫城", "主殿", "天门", "云港", "三足宝鼎", "云帆仙舟", "太虚古琴", "青铜天鼓"],
+        "actions": ["登阶朝觐", "穿廊入宫", "云舟抵达", "观象", "静立远望", "凭栏望云", "听瀑停步", "穿越云桥", "沿崖而行", "仪式进行中"],
+        "camera_and_composition": ["24mm 广角", "26mm 广角", "35mm 叙事镜头", "50mm 静观", "长焦压缩", "超低机位", "门内窥视", "前中后景分层", "逐级升起", "大面积留白", "框景", "引导线", "对称构图", "人物反衬建筑"],
+        "lighting_palette_material": ["云隙光", "月光主光", "侧逆光", "雾中体积光", "冷暖对比", "金色夕照", "灰白", "月夜蓝", "冰蓝", "青绿", "暖金", "朱砂", "银白", "汉白玉", "木构", "青铜风化", "湿润岩壁", "积雪", "宣纸肌理"],
+        "mood": ["宏大而克制", "静默神圣", "清洁空气透视", "史诗留白", "东方超现实", "空灵", "庄严", "宁静", "仪式感"]
+      },
+      "worldPresets": {
+        "九重天宫": {"positive": ["宫城位于人间云层之上", "宫殿下方为无底云海", "上方仍有高远天穹", "云台、天阶与宫廊具有清晰承托关系"], "negative": ["普通地面建筑", "宫殿坐落在平地", "可见人间地面", "云海只作为远景背景", "建筑底部连接地面"]},
+        "悬山仙境": {"positive": ["建筑顺应山势、岩台与峭壁展开", "台阶、廊桥与瀑流具有连续落点和承重关系", "云雾在山谷与建筑之间流动"], "negative": ["建筑无承托悬浮", "普通旅游景区", "人工景观摆拍"]},
+        "云海水境": {"positive": ["宫苑临镜湖、天池或云上水面展开", "水岸、倒影、舟行与建筑保持明确空间对应", "水面不吞没主体"], "negative": ["水面穿模", "错误倒影", "现代游艇"]},
+        "天界奇观": {"positive": ["巨物嵌入宫城与云海环境", "具备明确用途、材料、重量与承托关系", "人物和宫阙共同提供尺度参照"], "negative": ["巨物漂浮无承托", "玩具质感", "博物馆陈列"]},
+        "巨构天界": {"positive": ["前景正常人尺度锚点和可行走路径", "中景开阔云海或空阔宫台", "远景仅一座横向延展、压住天际的中国宫城", "高台基、层层重檐、巨型斗拱、连续巨柱和云上轴线", "巨构占画面至少三分之一并在上方或侧方出画"], "negative": ["地面化建筑", "西式垂直石墙", "教堂式门洞", "城堡尖塔", "断崖石堡", "杂树与碎建筑", "厚重云墙", "玩具质感"]}
+      },
+      "template": {
+        "positive": "{ratio}构图，{medium}。{world_type}；{world_prompt}。{time_weather}，{season_dynamic}。{environment}，{celestial_altitude}。核心场景：{scene}；建筑：{architecture}；空间关系：{architecture_relation}；场景机制：{scene_mechanism}。主体：{subject}；动作：{narrative_action}；人物设计：{character}。{camera}，{view_position}，{composition}。{lighting}；色彩：{palette}；材质：{material}；氛围：{mood}。",
+        "negative": "{targeted_negative}；人物正脸（如非必要）、西式建筑、日式寺庙、建筑结构扭曲、廉价游戏 CG、塑料材质、动漫风、霓虹、高饱和、水面穿模、文字、Logo、水印。"
+      },
+      "repairPool": ["强化前中后景和可行走路径", "明确建筑与云台/岩台/水岸的承托关系", "删除第二个视觉主体和无关装饰", "人物缩小为尺度参照，不让人物抢主体", "降低饱和度，恢复清洁空气透视", "修复水面、倒影、瀑布落点和云流方向"]
+    },
+    {
+      "id": "oscar-director-cinematography",
+      "skillId": "oscar-director-cinematography",
+      "label": "导演｜Oscar 导演摄影台",
+      "intents": ["导演语言", "类型片", "电影摄影", "电影单帧", "电影海报", "三联分镜"],
+      "fields": ["theme", "dramatic_question", "subject", "action", "setting", "time_weather", "blocking", "shot_size", "camera_position", "lens", "camera_behavior", "lighting", "palette", "texture", "sound_or_rhythm", "negative"],
+      "directorReferences": [
+        {"id": "D-GEN-00", "label": "通用电影质感", "logic": "叙事瞬间、人物表演、场面调度、景别机位、镜头行为、主光、色温、有限色板和材质颗粒"},
+        {"id": "D-GEN-01", "label": "库布里克", "logic": "几何对称、中心透视、冷静凝视、秩序压迫"},
+        {"id": "D-GEN-02", "label": "斯皮尔伯格", "logic": "人物调度、逆光剪影、运动中的情绪发现"},
+        {"id": "D-GEN-03", "label": "维伦纽瓦", "logic": "极简巨构、冷暖边界、低饱和敬畏感"},
+        {"id": "D-GEN-04", "label": "韦斯·安德森", "logic": "平面化对称、秩序化道具、明确色块"},
+        {"id": "D-GEN-05", "label": "诺兰", "logic": "时间结构、实拍尺度、冷峻高反差"},
+        {"id": "D-GEN-06", "label": "斯科塞斯", "logic": "音乐驱动动势、主观运动、城市夜色"},
+        {"id": "D-GEN-07", "label": "奉俊昊", "logic": "社会空间分层、黑色幽默、信息不对称"},
+        {"id": "D-GEN-08", "label": "查泽雷", "logic": "暖冷切换、舞台化运动、浪漫节奏"},
+        {"id": "D-GEN-09", "label": "德尔·托罗", "logic": "童话阴影、触觉材质、诗意怪诞"},
+        {"id": "D-GEN-10", "label": "黑泽明", "logic": "天气动势、群像调度、横向运动"},
+        {"id": "D-GEN-11", "label": "卡隆", "logic": "长镜头、环境沉浸、空间连续性"},
+        {"id": "D-GEN-12", "label": "伊纳里图", "logic": "手持贴身、自然光、身体临场感"},
+        {"id": "D-GEN-13", "label": "伯格曼", "logic": "脸部表演、留白、心理空间"},
+        {"id": "D-GEN-14", "label": "里恩", "logic": "宽银幕景观、自然光、人物与地景关系"},
+        {"id": "D-GEN-15", "label": "兰斯莫斯", "logic": "僵硬秩序、异常对称、冷幽默"}
+      ],
+      "sceneReferences": [
+        {"id": "D-SCENE-01", "label": "战场", "logic": "士兵视角、烟尘、手持混乱、爆炸实光、冷去饱和"},
+        {"id": "D-SCENE-02", "label": "科幻城市", "logic": "巨构城市、雾霾体积光、冷蓝灰与琥珀边界、尺度压迫"},
+        {"id": "D-SCENE-03", "label": "浪漫", "logic": "人物靠近、暖冷转场、自然光、克制表演"},
+        {"id": "D-SCENE-04", "label": "悬疑", "logic": "信息不对称、封闭构图、低调光和缓慢推进"},
+        {"id": "D-SCENE-05", "label": "史诗", "logic": "广阔地景、微小人物、天气动势、横向调度"},
+        {"id": "D-SCENE-06", "label": "超现实", "logic": "异常空间、对称或故意失衡、梦境材质和非线性逻辑"}
+      ],
+      "template": {
+        "positive": "主题：{theme}。戏剧问题：{dramatic_question}。在{setting}的{time_weather}中，{subject}正在{action}；人物调度：{blocking}。{shot_size}，{camera_position}，{lens}；镜头行为：{camera_behavior}。主光与光比：{lighting}；有限色板：{palette}；材质与颗粒：{texture}；节奏/声音暗示：{sound_or_rhythm}。整体保持一个主导视觉逻辑和可读的叙事瞬间。",
+        "negative": "不堆导演姓名、不写空泛‘电影感/8K/杰作’、不混用相反焦段和光线、不添加无关人物、Logo、水印或不可读长文字。{negative}"
+      },
+      "repairPool": ["把抽象主题改写为一个正在发生的动作", "只保留一个主导镜头行为", "限制为 2–4 个主色并明确色温转换", "增加人物调度和前中后景关系", "删除导演姓名，保留可执行摄影属性", "将长镜头/手持/固定机位等互斥运动二选一"]
+    },
+    {
+      "id": "fantasy-visual-studio",
+      "skillId": "fantasy-visual-studio-suite",
+      "label": "FANTASY｜Visual Studio",
+      "intents": ["人像与角色", "极简编辑海报", "电影三联", "文化海报", "趣怪社媒", "手绘插画", "旧照片", "车窗风景", "Logo"],
+      "sharedRules": ["每张图只选择一个套件和一个模板", "3:4 是人像/编辑/文化/社媒/Photo Revival 默认比例，1:1 是 Logo 默认比例", "文字需要准确时优先生成无字底图再后期排版", "参考图只用于保留事实，不复制具体人物身份、Logo、IP 或原图文字"],
+      "suites": {
+        "portrait": {"label": "Portrait Suite", "ratio": "3:4", "modes": ["life_mode_b", "character_casting", "multi_view_on_request"], "positive": ["生命感、真实表演、人物绝对主体", "保留身份、五官、发型、服装、配饰、姿态和人数", "自然皮肤纹理、环境关系、克制修饰"], "negative": ["塑料磨皮", "陌生脸", "模板化棚拍", "多余人物", "过度美颜", "未经要求的多视图"], "repair": ["强化真实表演和环境互动", "锁定人物身份并删除陌生脸", "降低磨皮与镜头光晕", "只保留一个人物主动作"]},
+        "editorial": {"label": "Editorial Suite", "ratio": "3:4", "modes": ["minimal_magazine", "oriental_editorial_poster"], "positive": ["大留白、单一主标题、网格秩序、克制色板", "标题与主体形成前后遮挡但不遮住脸和识别点", "东方编辑语气、纸张或印刷质感"], "negative": ["信息堆满", "随机贴纸", "品牌 Logo", "模型生成长中文正文", "粉色模板化"], "repair": ["删掉 30% 装饰和小字", "标题只保留一个并放大", "先留白后排版准确中文", "恢复版式层级和阅读路径"]},
+        "cinematic": {"label": "Cinematic Suite", "ratio": "16:9 或 3:4", "modes": ["cinema_dna_triptych", "single_frame", "film_poster"], "positive": ["三联分别承担建立、靠近、余韵/转折功能", "统一色彩、颗粒和镜头语法", "片名与主视觉有明确层级"], "negative": ["三张重复构图", "拼贴无叙事", "海报信息爆炸", "无关 Logo、水印"], "repair": ["给三张图分配不同景别和叙事功能", "统一主色与光向", "删除重复 skyline/图标", "先生成画面再准确排版片名"]},
+        "cultural_poster": {"label": "Cultural Poster", "ratio": "3:4", "positive": ["从地域碎片、器物、建筑、材料和边界效果提炼文化核心", "主物件占据视觉中心，使用 2–4 色主色", "可选剪纸、撕纸、材料拼贴、浅浮雕、建筑剖面边界"], "negative": ["地标拼贴", "旅游广告", "巨型人物面具", "重复天际线图标", "无意义英文标签", "模型生成长中文"], "repair": ["只保留一个文化母题", "删除地标合集和装饰图标", "把边界效果统一为一种材料逻辑", "隐藏私人信息并保留器物关键特征"]},
+        "fun_social": {"label": "Fun Social", "ratio": "3:4", "modes": ["T1 Portrait Editorial", "T2 Object Collage", "T3 Image Overlay Editorial", "black_ink", "color_chibi"], "positive": ["幽默来自内容关系而非随机装饰", "主标题清晰、信息块有系统隐喻", "黑白手绘只替换人物，环境保持摄影不变", "彩色 Chibi 保持成人身体比例和原动作"], "negative": ["无序堆满", "陌生人物", "品牌 Logo", "过度婴儿化比例", "写实脸部细节", "环境被重绘"], "repair": ["删一半标签和小物件", "放大主对象并减少信息块", "严格 reference-preservation，只叠加文字", "保持头部在原 bounding box 内，恢复成人比例"]},
+        "photo_utility": {"label": "Photo Utility", "ratio": "3:4 或 1:1", "modes": ["photo_revival", "window_scenery", "minimal_logo"], "positive": ["Photo Revival：主体只占 10–16%，绝对不超过 18%，80–88% 白纸留白", "Window Scenery：车内/舷窗前景占约 15–35%，外部地点为景观主角，先出无字底图", "Minimal Logo：一个主记忆动作、70/20/10 层级、白底和清晰可读"], "negative": ["整页满版照片", "滤镜化修复", "主体过大", "老黄纸", "旅游广告", "复制现有商标", "不可读变形"], "repair": ["把主体缩到 10–16% 并恢复白纸场", "明确窗框/车厢前景和真实行进动势", "Logo 只保留一个切口/负形/连接/折叠/轨迹动作", "先无字生成，再叠加地点标或精确文字"]}
+      }
+    }
+  ],
+  "templates": {
+    "commonRequest": {
+      "task": "{要生成/编辑的画面}",
+      "category": "{中式仙境 / Oscar 导演 / FANTASY}",
+      "referenceMode": "{none / reverse / img2img / hybrid}",
+      "aspectRatio": "{16:9 / 21:9 / 3:2 / 4:5 / 1:1 / 3:4 / 9:16}",
+      "positivePrompt": "{粘贴对应模板并替换变量}",
+      "negativePrompt": "{粘贴对应负面块}",
+      "outputMode": "{只输出 Prompt / 生成图片}",
+      "count": "{N}"
+    },
+    "fantasyFunSocialT1": "使用输入人像作为唯一人物参考，完整保持身份、五官、发型、服装、配饰、姿态和人数。制作 3:4 竖版人像编辑海报，人物为绝对主体；主标题「{headline}」使用巨大高对比粗体与人物形成前后遮挡，加入克制手写副标题「{secondary_line}」和 3–5 个状态标签：{supporting_copy}。色彩 {palette}，加入少量生活物件 {supporting_assets}；不要改脸、陌生人物、品牌 Logo 或模板化粉色。",
+    "fantasyFunSocialT2": "使用输入生活碎片制作 3:4 竖版杂物拼贴海报。核心创意「{content_core}」，主标题「{headline}」；以 {hero_subject} 为中心，围绕 {supporting_assets} 组织统一的 {system_metaphor} 世界观，用 3–6 个功能信息块呈现 {supporting_copy}。高密度但有中心，色彩 {palette}，质感 {texture}；幽默来自内容关系，不无序堆满。",
+    "fantasyFunSocialT3": "将输入照片作为完整不可替换底图，严格保留人物、场景、构图、光线、空间关系和关键对象。制作 3:4 全图压字编辑海报，主标题「{headline}」使用巨大 {headline_style} 字体形成有意遮挡，但不遮住面部或唯一识别点；加入 2–4 组克制小字 {supporting_copy}，不增加无关物件或 Logo。",
+    "fantasyBlackInk": "仅替换输入照片中的人物为黑白手绘抽象编辑角色，环境保持摄影且不重绘。保持原位置、动作、服装轮廓、配饰和手持物；脸部只用两个小实心点眼和极简嘴（可无鼻），禁止写实五官、发丝、衣褶和交叉排线。头部不得超出原 bounding box，成人比例和多人间距必须保持。",
+    "fantasyColorChibi": "仅替换输入照片中的人物为彩色编辑 Chibi，环境摄影保持不变。保留动作、发型、发色、服装颜色、配饰和手持物；脸部点眼、极简嘴、可选淡腮红。成人通常 4.5–6 头身，禁止婴儿化 2–3 头身、写实动漫眼和厚重水彩。",
+    "fantasyPhotoRevival": "将参考照片重新绘制为 3:4 白色纹理纸上的诗意手绘插画。保留 {preservation}；主体只占整页 10–16%，绝对不超过 18%，80–88% 保持空白白纸，插画略低于中心。颜色只留在小插画区域，加入极小手写中文诗句和 FIELD NOTE / DATE；禁止满版照片、滤镜感、大标题和重复文字。",
+    "fantasyWindowScenery": "Create one single photorealistic vertical 3:4 travel photograph viewed from inside a {transport}. The camera looks outward through a clearly visible {window_type}; natural window frame or cabin trim occupies about 15–35% as foreground framing. Outside show {location} with accurate {landscape_details}; include subtle motion cues. Keep the landscape realistic and calm; no collage, poster layout, advertising, extra text, watermark, fake sky, or excessive HDR.",
+    "fantasyMinimalLogo": "设计一个原创、便于注册前置审查的 {logo_type}；主导语言 {language}，准确文字 {exact_copy}；只使用一个主记忆动作 {memory_action}，几何骨架 {geometry}，材质 {material}。输出 1:1 白底清晰 Logo，遵循 70/20/10 层级；不要复制现有商标、复杂渐变、无关文字或不可读变形。",
+    "fantasyCulturalPoster": "从 {region} 的 {cultural_fragments} 提炼一个文化母题 {cultural_core}，制作 3:4 竖版编辑海报。主物件 {hero_object} 居中，使用 {palette} 和一种边界效果 {edge_effect}，加入简短准确标题 {headline} 与 {supporting_copy}；不要地标拼贴、旅游广告、巨型人物面具、无意义英文标签或模型生成长中文。",
+    "fantasyCinemaDnaTriptych": "围绕主题 {theme} 制作三联电影视觉：Shot 1 建立空间与规则，Shot 2 靠近人物并制造转折，Shot 3 留下余韵或后果。三张统一 {palette}、{lighting}、{texture} 和镜头语法，但分别使用不同景别/调度；片名 {title} 只做后期排版，不添加无关 Logo。"
+  },
+  "negativePools": {
+    "universal": ["文字、Logo、水印", "无关主体", "随机拼贴", "塑料材质", "过度 HDR", "廉价游戏 CG", "不可读长文字"],
+    "reference": ["复制真人身份", "复制具体 IP", "复制原图文字", "复制品牌 Logo", "猜测不可见故事"],
+    "promptQuality": ["同义词堆叠", "互斥镜头逻辑", "互斥色温", "空泛画质词", "把 Skill 名写进最终 Prompt", "把检查说明写进最终 Prompt"]
+  },
+  "repairProtocol": {
+    "order": ["主体与身份", "空间与尺度", "镜头与构图", "光色与材质", "文字与版式", "负面收敛"],
+    "maxPatches": 3,
+    "rule": "每次修复只追加最少必要句；修复后重新检查冲突，不重复发送完全相同的 Prompt。"
+  },
+  "coverage": ["使用方式", "通用请求模板", "仙宫入口/词库/五种世界设定/巨构/扩展成稿/负面/修复", "Oscar 入口/编译模板/22 个参考块", "FANTASY 六套工作流", "快速索引与复制前检查"]
+}

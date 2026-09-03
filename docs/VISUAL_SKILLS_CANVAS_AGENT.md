@@ -20,6 +20,16 @@ v0.12.5 同时把当前画布选区的安全摘要传入本地 Agent 和服务�
 | `chinese-fairyland-suite` | 天宫、悬山、云海水境、东方巨物等中式仙境专项。 |
 | `oscar-director-cinematography` | 将导演/类型片意图转译为叙事瞬间、调度、摄影、光色和有限色板。 |
 | `fantasy-photo-utility` | 旧照片诗意修复、车窗/舷窗旅行风景、极简 Logo/符号三类明确模式。 |
+| `fantasy-visual-studio-suite` | FANTASY Visual Studio 的 Portrait、Editorial、Cinematic、Cultural Poster、Fun Social、Photo Utility 六套工作流。 |
+
+## 结构化提示词库
+
+完整手册已整理为插件内的 [`prompt-library.json`](../plugins/infinite-canvas/skills/visual-workbench/prompt-library.json)。它同时承担两项职责：
+
+- `agentContract`：任务模式、参考图规则、Prompt 编译顺序、冲突消解、输出契约和通用负面约束；
+- `routes`：仙宫、Oscar 导演和 FANTASY 三类路由的字段、正向词池、世界/套件模板、负面词池和失败修复句。
+
+Agent 不应整段照抄库文件，而应先选择一个主路由（FANTASY 再选择一个套件），按编译顺序组装最小 Prompt，并从对应 `repairPool` 追加不超过三条修复句。手册新增案例或词组时，先更新该 JSON 的结构化字段，再同步 Skill 说明。
 
 ## 实际调用入口
 
@@ -85,6 +95,6 @@ npm run test:agent
 - 前端不保存或暴露上游 API Key；
 - 工具返回值是任务状态的唯一权威来源；
 - 当前没有可视化 Skill 菜单，入口是 LLM 函数工具和消息审计记录；
-- 六个视觉 Skill 是对工作台能力的画布侧精炼契约，不等同于把工作台目录中的全部文件动态挂载到浏览器；
+- 七个视觉 Skill 是对工作台能力的画布侧精炼契约，不等同于把工作台目录中的全部文件动态挂载到浏览器；其中 `fantasy-visual-studio-suite` 使用结构化提示词库覆盖 FANTASY 六套工作流，`fantasy-photo-utility` 保留为旧配置兼容入口；
 - `npm run test:agent` 在 Windows 上仍有一个既有的目录权限模式断言失败（`438 !== 448`），与本次画布 Skill 改动无关。
 - 服务器“方案三：Skill + LLM”已与 `@basketikun/canvas-agent` 脱钩，选区上下文由主站前端直接传给服务器 AI 代理；`@basketikun/canvas-agent` 仅用于可选的本地 Codex/Claude 桥接模式，版本发布与本次服务器上线独立。
