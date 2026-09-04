@@ -48,7 +48,7 @@ services:
   ins:
     image: nginx:1.27-alpine
     volumes:
-      - /opt/insight:/usr/share/nginx/html:ro
+      - /opt/insight/site:/usr/share/nginx/html:ro
     expose:
       - "80"
     healthcheck:
