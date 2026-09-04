@@ -43,7 +43,7 @@ Insight 产品树使用以下结构：
 └── ops/
 ```
 
-`docker-compose.deploy.yml` 只将 `site/` 挂载给静态 Nginx，应用源码、数据和密钥配置不对公网静态暴露。
+`docker-compose.deploy.yml` 只将 `site/` 和课程的公开目录 `course/` 挂载给静态 Nginx，应用源码、数据和密钥配置不对公网静态暴露。
 
 ## 4. 执行步骤
 
@@ -81,3 +81,39 @@ Insight 产品树使用以下结构：
 - 不修改账号、画布、媒体、数据库内容和 `.env.deploy`。
 - 密钥配置只做保属性迁移和路径替换，不读取、不打印、不提交 Git。
 - 不删除旧站点、应用、数据、配置或历史备份；旧实体改名为带时间戳的回滚副本。
+
+## 8. 执行记录
+
+本方案已于 2026-09-04 在生产服务器执行。
+
+### 8.1 生产路径
+
+- 主页：`/opt/hoosland-home`
+- Insight 静态站：`/opt/insight/site`
+- 课程：`/opt/insight/course`
+- 地产工作台 A：`/opt/insight/apps/real-estate`
+- 地产工作台 B：`/opt/insight/apps/real-estate-2`
+- 视觉工作台：`/opt/insight/apps/visual-workbench`
+- 共享地产 Skill：`/opt/insight/apps/shared-skills`
+- 运行数据：`/opt/insight/data`
+- 密钥与环境配置：`/opt/insight/config`
+- 迁移记录与 systemd 前后配置：`/opt/insight/ops/migration-20260904-111653`
+
+### 8.2 备份与兼容
+
+- 首页静态内容和 Compose 归档：`/opt/infinite-canvas/backups/static-sites-separation-20260904-111114`
+- 原应用、数据和配置实体均保留为 `.pre-insight-20260904-111653` 后缀的回滚副本。
+- 原 `/opt`、`/srv` 和 `/etc` 入口保留兼容软链接，统一指向 `/opt/insight`。
+
+### 8.3 上线结果
+
+- `landing` 容器只读挂载 `/opt/hoosland-home`。
+- `ins` 容器只读挂载 `/opt/insight/site` 和 `/opt/insight/course`。
+- 课程两个服务、地产工作台 A/B 和视觉工作台均从 `/opt/insight` 启动，状态为 `active/running`，重启计数为 0。
+- `hoosland.com`、Insight 首页、课程、地产工作台 A/B 和视觉工作台的公网验收均为 HTTP 200。
+- 画布 `app`、`backend` 和 `gateway` 容器未重建，容器 ID 和启动时间与迁移前一致。
+- 首页继续显示「浩瀚画布 / HowCanvas」「浩仔乐园 / Hoos OWUI」「许愿池 / HoosChat」「世界观 / HoosInsight」。
+
+### 8.4 执行中修正
+
+Insight 容器首次切换时，课程子目录无法挂载到只读的静态父挂载。处理方式是在 `/opt/insight/site` 预先创建空的 `course/` 挂载点，再重建 `ins` 容器。最终两个挂载均为只读，课程内容只保留一份生产源。
