@@ -34,7 +34,7 @@ services:
   landing:
     image: nginx:1.27-alpine
     volumes:
-      - ./hoosland:/usr/share/nginx/html:ro
+      - /opt/hoosland-home:/usr/share/nginx/html:ro
     expose:
       - "80"
     healthcheck:
@@ -48,7 +48,7 @@ services:
   ins:
     image: nginx:1.27-alpine
     volumes:
-      - ./hoosland-ins:/usr/share/nginx/html:ro
+      - /opt/insight:/usr/share/nginx/html:ro
     expose:
       - "80"
     healthcheck:
