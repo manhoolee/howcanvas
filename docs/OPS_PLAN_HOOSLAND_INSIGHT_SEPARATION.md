@@ -117,3 +117,14 @@ Insight 产品树使用以下结构：
 ### 8.4 执行中修正
 
 Insight 容器首次切换时，课程子目录无法挂载到只读的静态父挂载。处理方式是在 `/opt/insight/site` 预先创建空的 `course/` 挂载点，再重建 `ins` 容器。最终两个挂载均为只读，课程内容只保留一份生产源。
+
+### 8.5 规范化收尾
+
+2026-09-04 后续将部署编排也从画布项目中拆出：
+
+- `hoosland-home` Compose 项目独立管理主页静态容器。
+- `hoosland-insight` Compose 项目独立管理 Insight 静态容器。
+- `hoosland-gateway` 成为唯一监听 HTTP 80 端口的独立网关项目，配置位于 `/opt/hoosland-gateway/conf.d/hoosland.conf`。
+- 画布 `docker-compose.deploy.yml` 仅保留 `app` 与 `backend`，以后画布更新不会再重建主页、Insight 或全站网关。
+- 画布目录中的旧主页、Insight 和课程静态副本已移至 `/opt/hoosland-archive/legacy-canvas-content-20260904-114031`，保留可恢复归档。
+- 本阶段的切换前配置、容器记录和回滚材料位于 `/opt/hoosland-gateway/backups/normalization-20260904-113304`。
