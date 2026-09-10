@@ -34,6 +34,8 @@
 - [待测试](/docs/progress/pending-test)
 - [TODO](/docs/progress/todo)
 - [2026-09-02 工作日志](WORK_LOG_2026-09-02.md)
+- [2026-09-10 工作日志](WORK_LOG_2026-09-10.md)
+- [2026-09-10 画布修改记录](CHANGE_ARCHIVE_2026-09-10_CANVAS.md)
 
 ## 说明
 
