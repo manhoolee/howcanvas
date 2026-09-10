@@ -13,6 +13,8 @@ import express from "express";
 import { createServerDatabase, legacyDocumentIsNewer } from "./database.mjs";
 import { isArkSeedreamChannel, mergeSeedreamResults, prepareSeedreamRequest, seedreamUpstream } from "./seedream-routing.mjs";
 import { createTaskQueue } from "./task-queue.mjs";
+import { prepareImageDeliveryRequest } from "./image-delivery-routing.mjs";
+import { createAiDispatcher } from "./ai-transport.mjs";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(serverDir, ".env") });
@@ -56,6 +58,7 @@ const AUTH_COOKIE = "infinite_canvas_session";
 const ALLOW_REGISTRATION = process.env.ALLOW_REGISTRATION === "true";
 // 图片编辑/生成可能需要十多分钟；网关超时必须略长于或等于此值。
 const AI_UPSTREAM_TIMEOUT_MS = Math.max(5_000, Number(process.env.AI_UPSTREAM_TIMEOUT_MS) || 1_200_000);
+const aiDispatcher = createAiDispatcher(AI_UPSTREAM_TIMEOUT_MS);
 const RATE_LIMIT_WINDOW_MS = Math.max(60_000, Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000);
 const MAX_USER_STORAGE_BYTES = Math.max(100 * 1024 * 1024, Number(process.env.MAX_USER_STORAGE_BYTES) || 20 * 1024 * 1024 * 1024);
 const MAX_UPLOAD_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_UPLOAD_BYTES) || 100 * 1024 * 1024);
@@ -762,10 +765,11 @@ function completeProxyCharge(receipt) {
     persistUsers();
 }
 
-async function readBodyLimited(body, maximum) {
+async function readBodyLimited(body, maximum, onFirstChunk) {
     const chunks = [];
     let size = 0;
     for await (const chunk of body) {
+        if (!size && chunk.length) onFirstChunk?.();
         size += chunk.length;
         if (size > maximum) {
             await body.cancel().catch(() => {});
@@ -929,6 +933,11 @@ function publicImageTask(task) {
         upstreamStatus: task.upstreamStatus || 0,
         error: task.error || "",
         upstreamCompletedAt: task.upstreamCompletedAt || "",
+        upstreamRequestStartedAt: task.upstreamRequestStartedAt || "",
+        upstreamHeadersAt: task.upstreamHeadersAt || "",
+        upstreamFirstByteAt: task.upstreamFirstByteAt || "",
+        upstreamResponseBytes: task.upstreamResponseBytes || 0,
+        upstreamResponseFormat: task.upstreamResponseFormat || "",
         retrievalStartedAt: task.retrievalStartedAt || "",
         persistedAt: task.persistedAt || "",
         deliveryStatus: task.deliveryStatus || "pending",
@@ -988,10 +997,12 @@ async function runImageTask(userId, taskId) {
         if (task.routeKind === "seedream" && !isArkSeedreamChannel(channel, task.model)) throw new Error("Seedream 专用任务的渠道或模型无效");
         const prepared = seedreamTask
             ? { ...prepareSeedreamRequest(task, rawRequest), provider: "ark-seedream" }
-            : { body: rawRequest, contentType: task.requestContentType || "application/octet-stream", count: 1, provider: "compatible" };
+            : await prepareImageDeliveryRequest(task, channel, rawRequest);
         const { url, forwardPath } = seedreamTask ? seedreamUpstream(channel) : imageTaskUpstream(channel, task.action);
         task.upstreamProvider = prepared.provider;
         task.upstreamPath = forwardPath;
+        task.upstreamResponseFormat = prepared.responseFormat || "";
+        task.upstreamRequestStartedAt = new Date().toISOString();
         saveImageTask(task, "task.routed");
         console.info(`[image-task] route ${task.id} ${channel.id} ${prepared.provider} POST ${forwardPath}`);
         const key = channel.apiKey.trim();
@@ -1005,10 +1016,14 @@ async function runImageTask(userId, taskId) {
                 method: "POST",
                 headers,
                 body: prepared.body,
+                dispatcher: aiDispatcher,
                 signal: AbortSignal.any([AbortSignal.timeout(AI_UPSTREAM_TIMEOUT_MS), controller.signal]),
             });
             contentType = upstream.headers.get("content-type") || contentType;
-            const body = upstream.body ? await readBodyLimited(upstream.body, MAX_AI_RESPONSE_BYTES) : Buffer.alloc(0);
+            updateImageTask(task, { upstreamHeadersAt: task.upstreamHeadersAt || new Date().toISOString(), upstreamStatus: upstream.status });
+            const body = upstream.body ? await readBodyLimited(upstream.body, MAX_AI_RESPONSE_BYTES, () => {
+                if (!task.upstreamFirstByteAt) updateImageTask(task, { upstreamFirstByteAt: new Date().toISOString() });
+            }) : Buffer.alloc(0);
             task.upstreamStatus = upstream.status;
             if (!upstream.ok) {
                 const summary = body.toString("utf8").replace(/[\r\n\t]+/g, " ").slice(0, 1000);
@@ -1018,6 +1033,7 @@ async function runImageTask(userId, taskId) {
                 return;
             }
             resultBytes += body.length;
+            task.upstreamResponseBytes = resultBytes;
             if (resultBytes > MAX_AI_RESPONSE_BYTES) throw new Error("AI 上游响应超过服务器大小限制");
             resultBodies.push(body);
         }
@@ -1353,6 +1369,7 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
             method: req.method,
             headers,
             body: ["GET", "HEAD"].includes(req.method) || !Buffer.isBuffer(upstreamBody) ? undefined : upstreamBody,
+            dispatcher: aiDispatcher,
             signal: AbortSignal.any([AbortSignal.timeout(AI_UPSTREAM_TIMEOUT_MS), clientAbortController.signal]),
         };
         const upstream = channel.apiFormat === "grok-video-v2"

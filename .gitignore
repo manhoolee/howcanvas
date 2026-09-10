@@ -8,6 +8,10 @@ data/
 *.tsbuildinfo
 .DS_Store
 .idea
+.deployed-commit
+.deployed-manifest.json
+server-data/
+backups/
 web/dist
 
 **/dist

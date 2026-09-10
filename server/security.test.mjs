@@ -418,6 +418,11 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
     assert.equal(backgroundTask.data.task.status, "succeeded");
     assert.equal(backgroundTask.data.task.phase, "persisted");
     assert.equal(backgroundTask.data.task.deliveryStatus, "pending");
+    const timing = backgroundTask.data.task;
+    assert.ok(Date.parse(timing.upstreamRequestStartedAt) <= Date.parse(timing.upstreamHeadersAt));
+    assert.ok(Date.parse(timing.upstreamHeadersAt) <= Date.parse(timing.upstreamFirstByteAt));
+    assert.ok(Date.parse(timing.upstreamFirstByteAt) <= Date.parse(timing.upstreamCompletedAt));
+    assert.ok(timing.upstreamResponseBytes > 0);
     assert.equal(backgroundTask.data.task.media.length, 1);
     assert.equal(backgroundTask.data.task.media[0].bytes, mockPng.length);
     assert.equal(backgroundTask.data.task.media[0].mimeType, "image/png");

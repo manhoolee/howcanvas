@@ -267,6 +267,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 
     const handleResizeMouseDown = (event: React.MouseEvent, corner: ResizeCorner) => {
         event.stopPropagation();
+        if (event.button !== 0) return;
         event.preventDefault();
         resizeRef.current = {
             isResizing: true,

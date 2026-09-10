@@ -12,6 +12,52 @@ export function nodeBounds(nodes: CanvasNodeData[]) {
     );
 }
 
+export type NodeAlignment = "left" | "right" | "top" | "bottom" | "horizontal-center" | "vertical-center";
+
+export function alignCanvasNodes(nodes: CanvasNodeData[], selectedIds: Set<string>, alignment: NodeAlignment) {
+    const children = new Map<string, Set<string>>();
+    for (const node of nodes) {
+        const childIds = children.get(node.id) ?? new Set<string>();
+        node.metadata?.batchChildIds?.forEach((id) => childIds.add(id));
+        children.set(node.id, childIds);
+        if (node.metadata?.groupId) {
+            const siblings = children.get(node.metadata.groupId) ?? new Set<string>();
+            siblings.add(node.id);
+            children.set(node.metadata.groupId, siblings);
+        }
+    }
+    const descendants = (id: string) => {
+        const ids = new Set<string>();
+        const pending = [...(children.get(id) ?? [])];
+        while (pending.length) {
+            const childId = pending.pop()!;
+            if (childId === id || ids.has(childId)) continue;
+            ids.add(childId);
+            pending.push(...(children.get(childId) ?? []));
+        }
+        return ids;
+    };
+    // A selected group or batch moves as one unit, including selected descendants.
+    const selected = nodes.filter((node) => selectedIds.has(node.id));
+    const childIds = new Set(selected.flatMap((node) => [...descendants(node.id)]));
+    const roots = selected.filter((node) => !childIds.has(node.id));
+    if (roots.length < 2) return nodes;
+    const bounds = nodeBounds(roots);
+    const offsets = new Map<string, { x: number; y: number }>();
+    for (const node of roots) {
+        const x = alignment === "left" ? bounds.left : alignment === "right" ? bounds.right - node.width : alignment === "horizontal-center" ? (bounds.left + bounds.right - node.width) / 2 : node.position.x;
+        const y = alignment === "top" ? bounds.top : alignment === "bottom" ? bounds.bottom - node.height : alignment === "vertical-center" ? (bounds.top + bounds.bottom - node.height) / 2 : node.position.y;
+        const offset = { x: x - node.position.x, y: y - node.position.y };
+        offsets.set(node.id, offset);
+        descendants(node.id).forEach((id) => offsets.set(id, offset));
+    }
+    if (![...offsets.values()].some(({ x, y }) => x || y)) return nodes;
+    return nodes.map((node) => {
+        const offset = offsets.get(node.id);
+        return offset && (offset.x || offset.y) ? { ...node, position: { x: node.position.x + offset.x, y: node.position.y + offset.y } } : node;
+    });
+}
+
 export function findGroupDropTarget(movedIds: Set<string>, nodes: CanvasNodeData[]) {
     if (nodes.some((node) => movedIds.has(node.id) && node.type === CanvasNodeType.Group)) return null;
     const movingNodes = nodes.filter((node) => movedIds.has(node.id) && node.type !== CanvasNodeType.Group);

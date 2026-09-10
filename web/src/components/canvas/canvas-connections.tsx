@@ -68,7 +68,8 @@ export function ConnectionPath({
                     aria-label="删除连线"
                     tabIndex={0}
                     transform={`translate(${buttonX} ${buttonY})`}
-                    style={{ cursor: "pointer" }}
+                    style={{ cursor: "pointer", pointerEvents: "all" }}
+                    onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                         event.stopPropagation();
                         onDelete();

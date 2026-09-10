@@ -7,6 +7,7 @@ import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import { withCharge } from "@/lib/billing";
+import { gptImage25BaseModel, gptImage25Qualities, gptImage25RequestSize } from "@/lib/gpt-image-25";
 import { refreshServerImageTask, requestServerImageTask, waitForServerImageTask, supportsServerImageTasks, type ServerImageTask, type ServerImageTaskOptions } from "./image-task";
 import type { ServerMediaIndexEntry } from "./backend";
 import { saveGeneratedDataUrl, saveGeneratedText } from "@/services/user-files";
@@ -147,8 +148,12 @@ const IMAGE_OUTPUT_FORMAT = "png";
 const GEMINI_SUPPORTED_RATIOS = ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"];
 const GEMINI_IMAGE_SIZE_BY_QUALITY: Record<string, string> = { low: "1K", medium: "2K", high: "4K", standard: "1K", hd: "2K" };
 
-function normalizeQuality(quality: string) {
+function normalizeQuality(quality: string, model = "") {
     const value = quality.trim().toLowerCase();
+    if (gptImage25BaseModel(model)) {
+        if (!gptImage25Qualities.some((item) => item.value === value)) throw new Error("请选择有效的图像质量");
+        return value;
+    }
     const normalized = QUALITY_ALIASES[value] || value;
     return QUALITY_BASE[normalized] ? normalized : undefined;
 }
@@ -281,6 +286,13 @@ function resolveImageData(item: Record<string, unknown>): GeneratedApiImage | nu
         ...(typeof item.serverTaskId === "string" ? { serverTaskId: item.serverTaskId } : {}),
         ...(item.mediaIndex && typeof item.mediaIndex === "object" ? { mediaIndex: item.mediaIndex as ServerMediaIndexEntry } : {}),
     };
+}
+
+function resolveImageRequestSize(config: AiConfig, quality: string | undefined) {
+    const model = config.model || config.imageModel;
+    if (!gptImage25BaseModel(model)) return resolveRequestSize(quality, config.size);
+    if (config.background === "transparent" && quality === "low") throw new Error("透明背景至少需要中等质量");
+    return gptImage25RequestSize(model, config.size);
 }
 
 function parseImagePayload(payload: ImageApiResponse | string) {
@@ -910,8 +922,8 @@ async function requestGenerationImpl(config: AiConfig, prompt: string, options?:
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const script = resolveModelScript(config, config.model || config.imageModel);
     if (script) {
-        const quality = normalizeQuality(config.quality);
-        const requestSize = resolveRequestSize(quality, config.size);
+        const quality = normalizeQuality(config.quality, requestConfig.model);
+        const requestSize = resolveImageRequestSize(config, quality);
         const background = normalizeBackground(config.background);
         try {
             const result = await runModelPlugin({
@@ -935,8 +947,8 @@ async function requestGenerationImpl(config: AiConfig, prompt: string, options?:
             throw new Error(readAxiosError(error, "请求失败"));
         }
     }
-    const quality = normalizeQuality(config.quality);
-    const requestSize = resolveRequestSize(quality, config.size);
+    const quality = normalizeQuality(config.quality, requestConfig.model);
+    const requestSize = resolveImageRequestSize(config, quality);
     const background = normalizeBackground(config.background);
     const payload = {
         model: requestConfig.model,
@@ -983,8 +995,8 @@ async function requestEditImpl(config: AiConfig, prompt: string, references: Ref
     const requestPrompt = buildImageReferencePromptText(prompt, references);
     const script = resolveModelScript(config, config.model || config.imageModel);
     if (script) {
-        const quality = normalizeQuality(config.quality);
-        const requestSize = resolveRequestSize(quality, config.size);
+        const quality = normalizeQuality(config.quality, requestConfig.model);
+        const requestSize = resolveImageRequestSize(config, quality);
         const background = normalizeBackground(config.background);
         const refs = await Promise.all(references.map((image) => imageToDataUrl(image)));
         try {
@@ -1010,8 +1022,8 @@ async function requestEditImpl(config: AiConfig, prompt: string, references: Ref
             throw new Error(readAxiosError(error, "请求失败"));
         }
     }
-    const quality = normalizeQuality(config.quality);
-    const requestSize = resolveRequestSize(quality, config.size);
+    const quality = normalizeQuality(config.quality, requestConfig.model);
+    const requestSize = resolveImageRequestSize(config, quality);
     const background = normalizeBackground(config.background);
     const formData = new FormData();
     formData.set("model", requestConfig.model);

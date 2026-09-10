@@ -71,6 +71,8 @@
 
 ## 发版本流程
 
+- 当前画布开发目录为 `F:/hoosland/can/source`，必须使用该目录的 Git 记录；从其他 checkout 开发前先 fetch 并核对主分支、线上 `.deployed-commit` 与 `.deployed-manifest.json`。发现线上文件哈希变化或本地落后时，先保留并合并差异，不得直接覆盖部署。
+- 只从已提交的 Git 树发布，用 `scripts/release-source-manifest.mjs` 校验完整源码及生产 Canvas 文件；源码归档、校验清单与回滚资料放在 `/opt/hoosland-archive/`。密钥、数据库、用户媒体、依赖和构建缓存不进入 Git。三方一致是源码与版本一致，不能通过覆盖生产数据实现。
 - 上线前同步更新与本次变更相关的项目文档，包括用户可感知功能、配置项、部署方式、安全边界和已知限制；不得只改代码而遗漏文档。
 - 发版本时，先把 `CHANGELOG.md` 的 `Unreleased` 变更整理成新的版本记录，并保留空的 `Unreleased` 标题。
 - 按当前版本号提升一个版本，更新根目录 `VERSION`。

@@ -3,6 +3,7 @@ import type { NavigateFunction } from "react-router-dom";
 import { fetchPrompts } from "@/services/api/prompts";
 import { uploadImage } from "@/services/image-storage";
 import { imageAspectOptions, imageQualityOptions } from "@/components/image-settings-panel";
+import { gptImage25BaseModel, gptImage25Qualities } from "@/lib/gpt-image-25";
 import { videoResolutionOptions, videoSecondOptions, videoSizeOptions } from "@/components/video-settings-panel";
 import type { CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
@@ -162,7 +163,7 @@ function getImageConfig() {
     return {
         current: { model, modelName: modelOptionName(model), quality: config.quality || "auto", size: config.size || "1:1", count: config.count || "1" },
         models: selectableModelsByCapability(config, "image").map((value) => ({ value, label: modelOptionLabel(config, value) })),
-        qualityOptions: imageQualityOptions,
+        qualityOptions: gptImage25BaseModel(model) ? gptImage25Qualities : imageQualityOptions,
         sizeOptions: imageAspectOptions,
         countRange: { min: 1, max: 15 },
         stylePresets: IMAGE_STYLE_PRESETS.map(({ id, label, tags }) => ({ id, label, tags })),

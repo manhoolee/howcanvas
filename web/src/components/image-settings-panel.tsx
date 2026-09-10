@@ -3,6 +3,7 @@ import { ConfigProvider, Switch } from "antd";
 
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import type { AiConfig } from "@/stores/use-config-store";
+import { gptImage25BaseModel, gptImage25PresetSize, gptImage25Qualities, gptImage25Ratios, gptImage25Resolutions, gptImage25Settings } from "@/lib/gpt-image-25";
 
 const qualityOptions = [
     { value: "auto", label: "自动" },
@@ -44,12 +45,24 @@ type ImageSettingsPanelProps = {
 export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5", maxCount = 15, quickCount = 10 }: ImageSettingsPanelProps) {
     const [snapDimensionToStep, setSnapDimensionToStep] = useState(true);
     const quality = config.quality || "auto";
+    const model = config.model || config.imageModel;
+    const isGptImage25 = Boolean(gptImage25BaseModel(model));
+    const settings25 = isGptImage25 ? gptImage25Settings(model, config.size) : null;
+    const availableAspects: typeof aspectOptions = isGptImage25 ? ["auto", ...gptImage25Ratios].map((value) => {
+        if (value === "auto") return { value, label: "自适应", width: 0, height: 0, icon: "auto" };
+        const [width, height] = value.split(":").map(Number);
+        return { value, label: value, width, height, icon: width === height ? "square" : width > height ? "landscape" : "portrait" };
+    }) : aspectOptions;
     const count = Math.max(1, Math.min(maxCount, Math.floor(Math.abs(Number(config.count)) || 1)));
-    const activeSize = config.size || "auto";
+    const activeSize = settings25?.size || config.size || "auto";
     const transparentBackground = config.background === "transparent";
-    const selectedAspect = aspectOptions.find((item) => (item.size || item.value) === activeSize || item.value === activeSize);
+    const selectedAspect = availableAspects.find((item) => settings25 ? item.value === settings25.ratio : (item.size || item.value) === activeSize || item.value === activeSize);
     const dimensions = readSizeDimensions(activeSize, selectedAspect || aspectOptions[0]);
     const selectAspect = (value: string) => {
+        if (settings25) {
+            onConfigChange("size", value === "auto" ? "auto" : gptImage25PresetSize(settings25.resolution === "auto" ? "1K" : settings25.resolution, value));
+            return;
+        }
         const option = aspectOptions.find((item) => item.value === value);
         onConfigChange("size", option?.size || option?.value || "auto");
     };
@@ -57,7 +70,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
         const next = Math.max(1, Math.floor(value || dimensions[key] || 1024));
         const width = key === "width" ? next : dimensions.width;
         const height = key === "height" ? next : dimensions.height;
-        onConfigChange("size", `${alignDimension(width, snapDimensionToStep)}x${alignDimension(height, snapDimensionToStep)}`);
+        onConfigChange("size", `${alignDimension(width, isGptImage25 || snapDimensionToStep)}x${alignDimension(height, isGptImage25 || snapDimensionToStep)}`);
     };
 
     return (
@@ -73,37 +86,50 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
             >
                 {showTitle ? <div className="text-lg font-semibold">图像设置</div> : null}
                 <div className="space-y-2.5">
-                    <SettingTitle color={theme.node.muted}>质量</SettingTitle>
-                    <div className="grid grid-cols-4 gap-2.5">
-                        {qualityOptions.map((item) => (
-                            <OptionPill key={item.value} selected={quality === item.value} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
+                    <SettingTitle color={theme.node.muted}>{isGptImage25 ? "效果质量" : "质量"}</SettingTitle>
+                    <div className={isGptImage25 ? "grid grid-cols-3 gap-2.5" : "grid grid-cols-4 gap-2.5"}>
+                        {(isGptImage25 ? gptImage25Qualities : qualityOptions).map((item) => (
+                            <OptionPill key={item.value} selected={quality === item.value} disabled={isGptImage25 && transparentBackground && item.value === "low"} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
                                 {item.label}
                             </OptionPill>
                         ))}
                     </div>
                 </div>
+                {settings25 ? (
+                    <div className="space-y-2.5">
+                        <SettingTitle color={theme.node.muted}>分辨率</SettingTitle>
+                        <div className="grid grid-cols-4 gap-2.5" role="group" aria-label="分辨率">
+                            <OptionPill selected={settings25.resolution === "auto"} theme={theme} onClick={() => onConfigChange("size", "auto")}>自适应</OptionPill>
+                            {gptImage25Resolutions.map((resolution) => (
+                                <OptionPill key={resolution} selected={settings25.resolution === resolution} theme={theme} onClick={() => onConfigChange("size", gptImage25PresetSize(resolution, settings25.ratio === "auto" ? "1:1" : settings25.ratio))}>
+                                    {resolution}
+                                </OptionPill>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
                 <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                         <SettingTitle color={theme.node.muted}>尺寸</SettingTitle>
-                        <div className="flex items-center gap-2">
+                        {!isGptImage25 ? <div className="flex items-center gap-2">
                             <span className="text-xs font-medium" style={{ color: theme.node.muted }}>
                                 16倍数对齐
                             </span>
                             <span title="输入完成后自动向上补成 16 的倍数" onMouseDown={(event) => event.stopPropagation()}>
                                 <Switch size="small" checked={snapDimensionToStep} onChange={setSnapDimensionToStep} />
                             </span>
-                        </div>
+                        </div> : null}
                     </div>
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2.5">
-                        <DimensionInput prefix="W" value={dimensions.width} disabled={activeSize === "auto"} theme={theme} alignToStep={snapDimensionToStep} onChange={(value) => updateDimension("width", value)} />
+                        <DimensionInput prefix="W" value={dimensions.width} disabled={activeSize === "auto"} theme={theme} alignToStep={isGptImage25 || snapDimensionToStep} onChange={(value) => updateDimension("width", value)} />
                         <span className="text-lg opacity-45">↔</span>
-                        <DimensionInput prefix="H" value={dimensions.height} disabled={activeSize === "auto"} theme={theme} alignToStep={snapDimensionToStep} onChange={(value) => updateDimension("height", value)} />
+                        <DimensionInput prefix="H" value={dimensions.height} disabled={activeSize === "auto"} theme={theme} alignToStep={isGptImage25 || snapDimensionToStep} onChange={(value) => updateDimension("height", value)} />
                     </div>
                 </div>
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>宽高比</SettingTitle>
                     <div className="grid grid-cols-4 gap-2.5">
-                        {aspectOptions.map((item) => (
+                        {availableAspects.map((item) => (
                             <button
                                 key={item.value}
                                 type="button"
@@ -126,7 +152,10 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         </div>
                     </div>
                     <span onMouseDown={(event) => event.stopPropagation()}>
-                        <Switch size="small" checked={transparentBackground} onChange={(checked) => onConfigChange("background", checked ? "transparent" : "")} />
+                        <Switch size="small" checked={transparentBackground} onChange={(checked) => {
+                            if (isGptImage25 && checked && quality === "low") onConfigChange("quality", "medium");
+                            onConfigChange("background", checked ? "transparent" : "");
+                        }} />
                     </span>
                 </div>
                 <div className="space-y-2.5">
@@ -159,18 +188,20 @@ export function ImageSettingsTheme({ theme, children }: { theme: CanvasTheme; ch
 }
 
 export function imageQualityLabel(value: string) {
-    return ({ auto: "自动", high: "高", medium: "中", low: "低" } as Record<string, string>)[value] || value;
+    return gptImage25Qualities.find((item) => item.value === value)?.label || value;
 }
 
 export function imageSizeLabel(size: string) {
     return aspectOptions.find((item) => (item.size || item.value) === size || item.value === size)?.label || size;
 }
 
-function OptionPill({ selected, theme, onClick, children }: { selected: boolean; theme: CanvasTheme; onClick: () => void; children: ReactNode }) {
+function OptionPill({ selected, disabled, theme, onClick, children }: { selected: boolean; disabled?: boolean; theme: CanvasTheme; onClick: () => void; children: ReactNode }) {
     return (
         <button
             type="button"
-            className="h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80"
+            aria-pressed={selected}
+            disabled={disabled}
+            className="h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
             style={{ background: "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={onClick}

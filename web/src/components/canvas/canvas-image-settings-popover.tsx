@@ -10,6 +10,7 @@ import { DEFAULT_IMAGE_STYLE_SELECTION } from "@/lib/image-style";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
 import type { ImageStyleSelection, ImageStyleSnapshot } from "@/types/image-style";
+import { gptImage25BaseModel, gptImage25Settings } from "@/lib/gpt-image-25";
 
 type CanvasImageSettingsPopoverProps = {
     config: AiConfig;
@@ -36,6 +37,8 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onImageStyl
     const quality = config.quality || "auto";
     const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const activeSize = config.size || "auto";
+    const model = config.model || config.imageModel;
+    const settings25 = gptImage25BaseModel(model) ? gptImage25Settings(model, activeSize) : null;
     const updateOpen = (nextOpen: boolean) => {
         setOpen(nextOpen);
         onOpenChange?.(nextOpen);
@@ -96,7 +99,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onImageStyl
                     onClick={() => updateOpen(!open)}
                 >
                     <span className="truncate">
-                        {imageQualityLabel(quality)} · {imageSizeLabel(activeSize)} · {count} 张
+                        {settings25 ? `${settings25.resolution === "auto" ? "自适应" : `${settings25.resolution} · ${settings25.ratio}`} · ${imageQualityLabel(quality)}` : `${imageQualityLabel(quality)} · ${imageSizeLabel(activeSize)}`} · {count} 张
                     </span>
                 </Button>
             </span>
@@ -209,7 +212,7 @@ function ImageSettingsPortal({
     imageStyleSnapshot?: ImageStyleSnapshot;
     onImageStyleChange?: (selection: ImageStyleSelection) => void;
 }) {
-    const width = 356;
+    const width = Math.min(356, window.innerWidth - 24);
     const gap = 8;
     const margin = 12;
     const alignRight = placement?.endsWith("Right");
@@ -222,7 +225,7 @@ function ImageSettingsPortal({
         width,
         left: Math.max(margin, Math.min(window.innerWidth - width - margin, left)),
         ...(topPlacement ? { bottom: window.innerHeight - buttonRect.top + gap, maxHeight: Math.max(260, buttonRect.top - margin * 2) } : { top: buttonRect.bottom + gap, maxHeight: Math.max(260, window.innerHeight - buttonRect.bottom - margin * 2) }),
-        background: theme.toolbar.panel,
+        background: theme.node.panel,
         borderRadius: 18,
         boxShadow: "0 18px 54px rgba(28, 25, 23, 0.16)",
         padding: 18,

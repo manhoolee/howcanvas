@@ -1,4 +1,11 @@
 .git
+.deployed-commit
+.deployed-manifest.json
+server-data
+backups
+course
+hoosland
+hoosland-ins
 .idea
 **/node_modules
 **/dist

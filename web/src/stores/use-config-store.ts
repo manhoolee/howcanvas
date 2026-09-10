@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
+import { gptImage25BaseModel, visibleImageModelSelections } from "@/lib/gpt-image-25";
 
 export type ApiCallFormat = "openai" | "gemini" | "grok-video-v2" | "minimax-h3";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -159,8 +160,8 @@ export function modelMatchesCapability(config: AiConfig, value: string, capabili
 }
 
 export function selectableModelsByCapability(config: AiConfig, capability?: ModelCapability) {
-    if (!capability) return config.models;
-    return config.channels.flatMap((channel) => channel.models.filter((model) => model.capability === capability).map((model) => encodeChannelModel(channel.id, model.name)));
+    if (!capability) return visibleImageModelSelections(config.models);
+    return visibleImageModelSelections(config.channels.flatMap((channel) => channel.models.filter((model) => model.capability === capability).map((model) => encodeChannelModel(channel.id, model.name))));
 }
 
 /** The user script (if any) attached to a model; empty string means use the system default call. */
@@ -317,13 +318,15 @@ export function modelOptionName(value: string) {
 
 export function modelOptionLabel(config: AiConfig, value: string) {
     const decoded = decodeChannelModel(value);
-    if (!decoded) return value;
+    const base = gptImage25BaseModel(value);
+    const label = base ? `GPT Image 2.5 ${base.endsWith("flare") ? "Flare" : "Sunburst"}` : decoded?.model || value;
+    if (!decoded) return label;
     const channel = config.channels.find((item) => item.id === decoded.channelId || item.id === `srv_${decoded.channelId}`);
-    return channel ? `${decoded.model}（${channel.name}）` : decoded.model;
+    return channel ? `${label}（${channel.name}）` : label;
 }
 
 export function modelOptionsFromChannels(channels: ModelChannel[]) {
-    return uniqueModelOptions(channels.flatMap((channel) => channel.models.map((model) => encodeChannelModel(channel.id, model.name))));
+    return visibleImageModelSelections(uniqueModelOptions(channels.flatMap((channel) => channel.models.map((model) => encodeChannelModel(channel.id, model.name)))));
 }
 
 export function normalizeModelOptionValue(value: string | undefined, channels: ModelChannel[]) {
@@ -347,9 +350,11 @@ export function resolveModelChannel(config: AiConfig, value: string) {
 
 export function resolveModelRequestConfig(config: AiConfig, value: string) {
     const channel = resolveModelChannel(config, value);
+    const model = modelOptionName(value || config.model);
+    const base = gptImage25BaseModel(model);
     return {
         ...config,
-        model: modelOptionName(value || config.model),
+        model: base && channel.models.some((item) => item.name === base) ? base : model,
         baseUrl: channel.baseUrl,
         apiKey: channel.apiKey,
         apiFormat: channel.apiFormat,

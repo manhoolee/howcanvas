@@ -48,7 +48,7 @@ import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
 import { buildNodeMentionReferences, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
 import { applyNodeConfigPatch, audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, createCanvasNode, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-node-factory";
-import { findContainingGroupId, findGroupDropTarget, getConnectionTargetAnchor, isHiddenBatchChild, isHiddenBatchConnectionEndpoint, nodeBounds, normalizeConnection, snapNodesIntoGroup } from "@/lib/canvas/canvas-node-geometry";
+import { alignCanvasNodes, findContainingGroupId, findGroupDropTarget, getConnectionTargetAnchor, isHiddenBatchChild, isHiddenBatchConnectionEndpoint, nodeBounds, normalizeConnection, snapNodesIntoGroup } from "@/lib/canvas/canvas-node-geometry";
 import {
     audioExtension,
     buildAngleLabel,
@@ -1352,8 +1352,17 @@ function InfiniteCanvasPage() {
             title: `${source.title} Copy`,
             position: { x: source.position.x + 36, y: source.position.y + 36 },
         };
+        const inheritedConnections = connectionsRef.current
+            .filter((connection) => connection.fromNodeId === nodeId || connection.toNodeId === nodeId)
+            .map((connection) => ({
+                ...connection,
+                id: nanoid(),
+                fromNodeId: connection.fromNodeId === nodeId ? id : connection.fromNodeId,
+                toNodeId: connection.toNodeId === nodeId ? id : connection.toNodeId,
+            }));
 
         setNodes((prev) => [...prev, next]);
+        setConnections((prev) => [...prev, ...inheritedConnections]);
         setSelectedNodeIds(new Set([id]));
         setSelectedConnectionId(null);
         if (next.type !== CanvasNodeType.Group) setDialogNodeId(id);
@@ -1622,6 +1631,7 @@ function InfiniteCanvasPage() {
 
     const handleNodeMouseDown = useCallback((event: ReactMouseEvent, nodeId: string) => {
         event.stopPropagation();
+        if (event.button !== 0) return;
         // 选中已由 capture 阶段完成;这里只负责建立拖拽。若因故没走 capture,则兜底再选一次。
         const currentNodes = nodesRef.current;
         const nextSelected = pendingSelectionRef.current ?? selectNodeByEvent(event, nodeId).nextSelected;
@@ -2014,6 +2024,7 @@ function InfiniteCanvasPage() {
     const handleConnectStart = useCallback(
         (event: ReactMouseEvent, nodeId: string, handleType: "source" | "target") => {
             event.stopPropagation();
+            if (event.button !== 0) return;
             setMouseWorld(screenToCanvas(event.clientX, event.clientY));
             setConnecting({ nodeId, handleType });
             connectionTargetNodeIdRef.current = null;
@@ -2603,7 +2614,8 @@ function InfiniteCanvasPage() {
     const preventCanvasContextMenu = useCallback((event: ReactMouseEvent) => {
         if ((event.target as HTMLElement).closest("[data-node-id]")) return;
         event.preventDefault();
-        setContextMenu(null);
+        const nodeIds = [...selectedNodeIdsRef.current];
+        setContextMenu(nodeIds.length > 1 ? { type: "selection", x: event.clientX, y: event.clientY, nodeIds } : null);
     }, []);
 
     const handleGenerateNode = useCallback(
@@ -3388,7 +3400,12 @@ function InfiniteCanvasPage() {
     const handleNodeContextMenu = useCallback((event: ReactMouseEvent, nodeId: string) => {
         event.preventDefault();
         event.stopPropagation();
-        setContextMenu({ type: "node", x: event.clientX, y: event.clientY, nodeId });
+        const selection = selectedNodeIdsRef.current;
+        const nodeIds = selection.has(nodeId) ? [...selection] : [nodeId];
+        setSelectedNodeIds(new Set(nodeIds));
+        setSelectedConnectionId(null);
+        setToolbarNodeId(nodeIds.length === 1 ? nodeId : null);
+        setContextMenu(nodeIds.length > 1 ? { type: "selection", x: event.clientX, y: event.clientY, nodeIds } : { type: "node", x: event.clientX, y: event.clientY, nodeId });
     }, []);
 
     const renderNodePanel = useCallback(
@@ -3651,6 +3668,11 @@ function InfiniteCanvasPage() {
                     <CanvasNodeContextMenu
                         menu={contextMenu}
                         onClose={() => setContextMenu(null)}
+                        onAlign={(alignment) => {
+                            if (contextMenu.type !== "selection") return;
+                            setNodes((current) => alignCanvasNodes(current, new Set(contextMenu.nodeIds), alignment));
+                            setContextMenu(null);
+                        }}
                         onDuplicate={() => {
                             if (contextMenu.type !== "node") return;
                             duplicateNode(contextMenu.nodeId);
@@ -3659,6 +3681,8 @@ function InfiniteCanvasPage() {
                         onDelete={() => {
                             if (contextMenu.type === "node") {
                                 deleteNodes(new Set([contextMenu.nodeId]));
+                            } else if (contextMenu.type === "selection") {
+                                deleteNodes(new Set(contextMenu.nodeIds));
                             } else {
                                 deleteConnection(contextMenu.connectionId);
                             }
