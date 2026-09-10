@@ -2,7 +2,10 @@ import localforage from "localforage";
 
 import { nanoid } from "nanoid";
 import { dataUrlToBlob, readImageMeta } from "@/lib/image-utils";
-import { hashMediaBlob, recordLocalMediaBlob, removeLocalMediaRecords } from "@/services/media-index";
+import { hashMediaBlob, markMediaDownloaded, recordLocalMediaBlob, removeLocalMediaRecords } from "@/services/media-index";
+import { getAuthEpoch, type ServerMediaIndexEntry } from "@/services/api/backend";
+import { downloadImageBlob } from "@/services/api/image-transfer";
+import { acknowledgeImageTaskDelivery } from "@/services/api/image-task";
 
 export type UploadedImage = {
     url: string;
@@ -19,11 +22,13 @@ export type ServerImageInput = {
     bytes?: number;
     mimeType?: string;
     sha256?: string;
+    serverTaskId?: string;
+    mediaIndex?: ServerMediaIndexEntry;
 };
 
 const store = localforage.createInstance({ name: "infinite-canvas", storeName: "image_files" });
 const objectUrls = new Map<string, string>();
-const MEDIA_FETCH_TIMEOUT_MS = 20_000;
+const generatedImageDownloads = new Map<string, Promise<UploadedImage>>();
 let storageOwnerId = "anonymous";
 
 function ownerStorageKey(storageKey: string) {
@@ -40,15 +45,7 @@ export function setImageStorageOwner(ownerId: string | null) {
 
 async function fetchBlob(url: string) {
     if (url.startsWith("data:")) return dataUrlToBlob(url, "image/png");
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), MEDIA_FETCH_TIMEOUT_MS);
-    try {
-        const response = await fetch(url, { signal: controller.signal });
-        if (!response.ok) throw new Error(`读取图片失败（${response.status}）`);
-        return await response.blob();
-    } finally {
-        window.clearTimeout(timer);
-    }
+    return downloadImageBlob(url);
 }
 
 export async function uploadImage(input: string | Blob): Promise<UploadedImage> {
@@ -62,31 +59,64 @@ export async function uploadImage(input: string | Blob): Promise<UploadedImage> 
     return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
 }
 
-/** Preserve the server-assigned key so cloud sync can HEAD and skip re-upload. */
+/** Share in-flight downloads and register server media before canvas autosave. */
 export async function storeGeneratedImage(input: ServerImageInput): Promise<UploadedImage> {
     if (!input.storageKey) return uploadImage(input.dataUrl);
-    const scopedKey = ownerStorageKey(input.storageKey);
+    const key = `${getAuthEpoch()}:${ownerStorageKey(input.storageKey)}`;
+    const active = generatedImageDownloads.get(key);
+    if (active) return active;
+    const operation = storeServerImage(input).catch((error) => {
+        throw Object.assign(new Error(`原图已保存在服务器，本地取回未完成：${error instanceof Error ? error.message : String(error)}`), { taskStatus: "persisted" });
+    }).finally(() => generatedImageDownloads.delete(key));
+    generatedImageDownloads.set(key, operation);
+    return operation;
+}
+
+async function storeServerImage(input: ServerImageInput & { storageKey?: string }): Promise<UploadedImage> {
+    const storageKey = input.storageKey!;
+    const owner = storageOwnerId;
+    const epoch = getAuthEpoch();
+    const assertOwner = () => {
+        if (storageOwnerId !== owner || getAuthEpoch() !== epoch || (input.mediaIndex && input.mediaIndex.ownerId !== owner)) throw new Error("账号已切换，已取消图片缓存");
+    };
+    assertOwner();
+    const startedAt = performance.now();
+    const scopedKey = ownerStorageKey(storageKey);
     let blob = await store.getItem<Blob>(scopedKey);
     let downloaded = false;
     if (!blob) {
         blob = await fetchBlob(input.dataUrl);
         downloaded = true;
     }
+    assertOwner();
+    const downloadedAt = performance.now();
     if (!blob.type.startsWith("image/")) throw new Error("服务器返回的文件不是图片");
     if (typeof input.bytes === "number" && input.bytes !== blob.size) throw new Error("服务器图片大小校验失败");
     if (input.mimeType && blob.type && input.mimeType.toLowerCase() !== blob.type.toLowerCase()) throw new Error("服务器图片类型校验失败");
-    if (input.sha256) {
+    if (input.mediaIndex) {
+        await markMediaDownloaded(input.mediaIndex, blob);
+    } else if (input.sha256) {
         const actual = await hashMediaBlob(blob);
         if (actual !== input.sha256.toLowerCase()) throw new Error("服务器图片哈希校验失败");
     }
+    assertOwner();
+    const verifiedAt = performance.now();
     if (downloaded) await store.setItem(scopedKey, blob);
+    assertOwner();
+    if (input.serverTaskId) void acknowledgeImageTaskDelivery(input.serverTaskId, {
+        downloadMs: downloadedAt - startedAt,
+        verifyMs: verifiedAt - downloadedAt,
+        cacheMs: performance.now() - verifiedAt,
+        cacheHit: downloaded ? 0 : 1,
+    }, "cached").catch((error) => console.warn("[image-task] cache ACK failed", error));
     const previous = objectUrls.get(scopedKey);
     if (previous) URL.revokeObjectURL(previous);
     const url = URL.createObjectURL(blob);
     objectUrls.set(scopedKey, url);
-    void recordLocalMediaBlob(input.storageKey, blob);
+    if (!input.mediaIndex) void recordLocalMediaBlob(storageKey, blob);
     const meta = await readImageMeta(url);
-    return { url, storageKey: input.storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || input.mimeType || meta.mimeType };
+    assertOwner();
+    return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || input.mimeType || meta.mimeType };
 }
 
 export async function resolveImageUrl(storageKey?: string, fallback = "") {

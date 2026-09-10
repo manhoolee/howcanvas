@@ -160,7 +160,14 @@ export async function decideMediaSync(scope: MediaScope, storageKey: string, blo
 export async function markMediaDownloaded(entry: ServerMediaIndexEntry, blob: Blob) {
     const ownerId = activeOwnerId;
     if (!ownerId || entry.ownerId !== ownerId) return;
+    const generation = activeGeneration;
+    const epoch = getAuthEpoch();
     const fingerprint = await ensureFingerprint(ownerId, entry.storageKey, blob, true);
+    assertCurrent(ownerId, generation, epoch);
+    if (!mediaMatches(entry, fingerprint)) throw new Error("服务器图片哈希校验失败");
+    remoteEntries.set(remoteKey(entry.scope, entry.storageKey), entry);
+    await getServerIndexStore(ownerId).setItem(remoteKey(entry.scope, entry.storageKey), entry);
+    assertCurrent(ownerId, generation, epoch);
     await markMediaSynced(entry, fingerprint);
 }
 

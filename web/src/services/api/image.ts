@@ -7,7 +7,8 @@ import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import { withCharge } from "@/lib/billing";
-import { refreshServerImageTask, requestServerImageTask, supportsServerImageTasks, type ServerImageTask, type ServerImageTaskOptions } from "./image-task";
+import { refreshServerImageTask, requestServerImageTask, waitForServerImageTask, supportsServerImageTasks, type ServerImageTask, type ServerImageTaskOptions } from "./image-task";
+import type { ServerMediaIndexEntry } from "./backend";
 import { saveGeneratedDataUrl, saveGeneratedText } from "@/services/user-files";
 import type { ReferenceImage } from "@/types/image";
 
@@ -96,6 +97,7 @@ export type GeneratedApiImage = {
     sha256?: string;
     persistedAt?: string;
     serverTaskId?: string;
+    mediaIndex?: ServerMediaIndexEntry;
 };
 type GeminiPart = {
     text?: string;
@@ -277,6 +279,7 @@ function resolveImageData(item: Record<string, unknown>): GeneratedApiImage | nu
         ...(typeof item.sha256 === "string" ? { sha256: item.sha256 } : {}),
         ...(typeof item.persistedAt === "string" ? { persistedAt: item.persistedAt } : {}),
         ...(typeof item.serverTaskId === "string" ? { serverTaskId: item.serverTaskId } : {}),
+        ...(item.mediaIndex && typeof item.mediaIndex === "object" ? { mediaIndex: item.mediaIndex as ServerMediaIndexEntry } : {}),
     };
 }
 
@@ -894,6 +897,7 @@ function parseGeminiImagePayload(payload: GeminiPayload) {
 }
 
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions): Promise<GeneratedApiImage[]> {
+    if (options?.existingTaskId) return recoverImageGenerationTask(options.existingTaskId, options);
     return withCharge("image", config.model || config.imageModel, async () => {
         const images = await requestGenerationImpl(config, prompt, options);
         images.forEach((image) => saveGeneratedDataUrl("image", image.dataUrl));
@@ -965,6 +969,7 @@ async function requestGenerationImpl(config: AiConfig, prompt: string, options?:
 }
 
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], mask?: ReferenceImage, options?: RequestOptions): Promise<GeneratedApiImage[]> {
+    if (options?.existingTaskId) return recoverImageGenerationTask(options.existingTaskId, options);
     return withCharge("image", config.model || config.imageModel, async () => {
         const images = await requestEditImpl(config, prompt, references, mask, options);
         images.forEach((image) => saveGeneratedDataUrl("image", image.dataUrl));
@@ -1042,6 +1047,10 @@ async function requestEditImpl(config: AiConfig, prompt: string, references: Ref
     } catch (error) {
         throw new Error(readAxiosError(error, "请求失败"));
     }
+}
+
+export async function recoverImageGenerationTask(taskId: string, options?: ServerImageTaskOptions) {
+    return parseImagePayload(await waitForServerImageTask(taskId, options) as ImageApiResponse);
 }
 
 export async function requestImageQuestion(config: AiConfig, messages: AiTextMessage[], onDelta: (text: string) => void, options?: RequestOptions) {

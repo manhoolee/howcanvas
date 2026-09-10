@@ -428,10 +428,16 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
     const taskMedia = await request(baseUrl, backgroundResult.data.data[0].url, { cookie: imageCookie });
     assert.equal(taskMedia.status, 200);
     assert.equal(taskMedia.headers.get("x-file-sha256"), backgroundTask.data.task.media[0].sha256);
+    const cachedAck = await request(baseUrl, `/api/image-tasks/${taskId}/ack`, { cookie: imageCookie, body: JSON.stringify({ stage: "cached", metrics: { downloadMs: 25 } }) });
+    assert.equal(cachedAck.status, 200);
+    assert.ok(cachedAck.data.task.clientAckAt);
+    assert.equal(cachedAck.data.task.clientRenderedAt, "");
     const ack = await request(baseUrl, `/api/image-tasks/${taskId}/ack`, { cookie: imageCookie, body: JSON.stringify({ metrics: { clientElapsedMs: 25 } }) });
     assert.equal(ack.status, 200);
     assert.equal(ack.data.task.deliveryStatus, "delivered");
     assert.ok(ack.data.task.clientAckAt);
+    assert.equal(ack.data.task.clientAckAt, cachedAck.data.task.clientAckAt);
+    assert.ok(ack.data.task.clientRenderedAt);
     const repeatedAck = await request(baseUrl, `/api/image-tasks/${taskId}/ack`, { cookie: imageCookie, body: JSON.stringify({ metrics: { clientElapsedMs: 99 } }) });
     assert.equal(repeatedAck.data.task.clientAckAt, ack.data.task.clientAckAt);
 
@@ -458,6 +464,9 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
     assert.equal(generatedMediaEntry.scope, "workbench-image");
     assert.equal(generatedMediaEntry.sha256, base64TaskState.data.task.media[0].sha256);
     assert.equal(generatedMediaEntry.version, 1);
+    const indexedResult = await request(baseUrl, `/api/image-tasks/${base64Task.data.task.id}/result`, { cookie: imageCookie });
+    assert.deepEqual(indexedResult.data.data[0].mediaIndex, generatedMediaEntry);
+    assert.equal((await request(baseUrl, `/api/image-tasks/${base64Task.data.task.id}/result`, { cookie: loginAdmin.cookie })).status, 404);
     assert.equal((await request(baseUrl, `/api/image-tasks/${taskId}`, { cookie: loginAdmin.cookie })).status, 404);
 
     const multipartBoundary = "----WebKitFormBoundaryAbCdEf123";

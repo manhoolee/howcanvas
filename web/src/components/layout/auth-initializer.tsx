@@ -4,6 +4,7 @@ import { message } from "antd";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { getAuthEpoch } from "@/services/api/backend";
+import { IMAGE_TASK_RESUME_EVENT } from "@/services/api/image-task";
 
 /** 应用启动时校验本地令牌并从后端加载当前用户会话；登录状态变化时同步个人资产（资产跟账号走）。 */
 export function AuthInitializer() {
@@ -34,6 +35,8 @@ export function AuthInitializer() {
     useEffect(() => {
         if (!currentUserId || typeof EventSource === "undefined") return;
         const source = new EventSource("/api/session/events", { withCredentials: true });
+        const resumeTasks = () => window.dispatchEvent(new Event(IMAGE_TASK_RESUME_EVENT));
+        source.addEventListener("open", resumeTasks);
         const handleReplaced = () => window.dispatchEvent(new CustomEvent("infinite-canvas:auth-expired", { detail: { epoch: getAuthEpoch(), code: "SESSION_REPLACED" } }));
         const handleImageTask = (event: MessageEvent<string>) => {
             try {
@@ -47,6 +50,7 @@ export function AuthInitializer() {
         source.addEventListener("image-task-updated", handleImageTask as EventListener);
         source.addEventListener("image-task-completed", handleImageTask as EventListener);
         return () => {
+            source.removeEventListener("open", resumeTasks);
             source.removeEventListener("session-replaced", handleReplaced);
             source.removeEventListener("image-task-updated", handleImageTask as EventListener);
             source.removeEventListener("image-task-completed", handleImageTask as EventListener);

@@ -10,6 +10,7 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryAttempt = 0;
 let saveInFlight: Promise<void> | null = null;
+let saveRequested = false;
 let applyingServer = false;
 let syncGeneration = 0;
 let onlineListenerAttached = false;
@@ -92,8 +93,15 @@ function startAutoSave() {
 }
 
 async function saveCurrentCanvas(ownerId = activeOwnerId, generation = syncGeneration) {
+    if (!isCurrent(ownerId, generation)) return;
+    saveRequested = true;
     if (saveInFlight) return saveInFlight;
-    const operation = saveCurrentCanvasImpl(ownerId, generation);
+    const operation = (async () => {
+        do {
+            saveRequested = false;
+            await saveCurrentCanvasImpl(activeOwnerId, syncGeneration);
+        } while (saveRequested && activeOwnerId);
+    })();
     const tracked = operation.finally(() => {
         if (saveInFlight === tracked) saveInFlight = null;
     });
@@ -174,8 +182,10 @@ function isCurrent(ownerId: string, generation: number) {
 }
 
 async function uploadCanvasFiles(projects: CanvasProject[], ownerId: string, generation: number) {
-    const keys = collectStorageKeys(projects);
-    await Promise.all(Array.from(keys).map(async (storageKey) => {
+    const keys = Array.from(collectStorageKeys(projects));
+    let cursor = 0;
+    const syncFile = async (storageKey: string) => {
+        if (!isCurrent(ownerId, generation)) return;
         if (uploadedCanvasFilesOwner === ownerId && uploadedCanvasFiles.has(storageKey)) return;
         if (isIndexedMediaCurrent("canvas", storageKey)) {
             if (uploadedCanvasFilesOwner === ownerId) uploadedCanvasFiles.add(storageKey);
@@ -183,6 +193,7 @@ async function uploadCanvasFiles(projects: CanvasProject[], ownerId: string, gen
         }
         const blob = storageKey.startsWith("image:") ? await getImageBlob(storageKey) : await getMediaBlob(storageKey);
         const decision = await decideMediaSync("canvas", storageKey, blob);
+        if (!isCurrent(ownerId, generation)) return;
         if (decision === "upload" && blob) {
             const media = await backend.uploadCanvasFile(storageKey, blob);
             await markMediaUploaded(media, blob);
@@ -196,6 +207,9 @@ async function uploadCanvasFiles(projects: CanvasProject[], ownerId: string, gen
             }
         }
         if (decision !== "missing" && uploadedCanvasFilesOwner === ownerId) uploadedCanvasFiles.add(storageKey);
+    };
+    await Promise.all(Array.from({ length: Math.min(3, keys.length) }, async () => {
+        while (cursor < keys.length && isCurrent(ownerId, generation)) await syncFile(keys[cursor++]);
     }));
 }
 

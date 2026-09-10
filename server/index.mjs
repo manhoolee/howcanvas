@@ -933,6 +933,7 @@ function publicImageTask(task) {
         persistedAt: task.persistedAt || "",
         deliveryStatus: task.deliveryStatus || "pending",
         clientAckAt: task.clientAckAt || "",
+        clientRenderedAt: task.clientRenderedAt || "",
         media: Array.isArray(task.media) ? task.media.map((item) => ({
             storageKey: item.storageKey,
             url: item.url,
@@ -1204,9 +1205,11 @@ app.get("/api/image-tasks/:taskId/result", auth, (req, res) => {
     if (!task || !paths) return res.status(404).json({ error: "图片任务不存在" });
     if (task.status !== "succeeded" || !fs.existsSync(paths.result)) return res.status(409).json({ error: task.error || "图片任务尚未完成" });
     res.setHeader("Cache-Control", "private, no-store");
-    res.setHeader("Content-Type", task.resultContentType || "application/json");
-    res.setHeader("Content-Length", fs.statSync(paths.result).size);
-    res.sendFile(paths.result);
+    res.json({ data: (task.media || []).map((item) => {
+        const target = imageTaskMediaTarget(task, item.storageKey);
+        const mediaIndex = target.scope ? database.getMediaAsset(task.userId, target.scope, item.storageKey) : null;
+        return { ...item, serverTaskId: task.id, ...(mediaIndex ? { mediaIndex } : {}) };
+    }) });
 });
 
 app.get("/api/image-tasks/:taskId/media/:storageKey", auth, (req, res) => {
@@ -1227,11 +1230,13 @@ app.post("/api/image-tasks/:taskId/ack", auth, express.json({ limit: "32kb" }), 
     const task = loadImageTask(req.user.id, req.params.taskId);
     if (!task) return res.status(404).json({ error: "图片任务不存在" });
     if (task.status !== "succeeded") return res.status(409).json({ error: "图片任务尚未完成落盘" });
-    if (!task.clientAckAt) {
+    const rendered = req.body?.stage !== "cached";
+    if (!task.clientAckAt || (rendered && !task.clientRenderedAt)) {
         const metrics = req.body?.metrics && typeof req.body.metrics === "object"
             ? Object.fromEntries(Object.entries(req.body.metrics).slice(0, 10).map(([key, value]) => [String(key).slice(0, 60), Number(value)]).filter(([, value]) => Number.isFinite(value) && value >= 0))
             : undefined;
-        updateImageTask(task, { deliveryStatus: "delivered", clientAckAt: new Date().toISOString(), ...(metrics && Object.keys(metrics).length ? { deliveryMetrics: metrics } : {}) }, "image-task-updated", "task.delivery-ack");
+        const now = new Date().toISOString();
+        updateImageTask(task, { deliveryStatus: "delivered", clientAckAt: task.clientAckAt || now, ...(rendered ? { clientRenderedAt: now } : {}), ...(metrics && Object.keys(metrics).length ? { deliveryMetrics: { ...task.deliveryMetrics, ...metrics } } : {}) }, "image-task-updated", rendered ? "task.render-ack" : "task.delivery-ack");
         console.log(`[image-task] ${task.id} delivery acknowledged`);
     }
     res.json({ ok: true, task: publicImageTask(task) });

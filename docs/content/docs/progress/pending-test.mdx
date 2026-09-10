@@ -5,6 +5,10 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+- v0.12.7 图片交付：弱网下载持续超过 20 秒仍应继续；暂时失败应自动重试原媒体 GET，页面重新可见、网络恢复及 SSE 重连后应继续查询原 taskId，不新增生图请求或重复扣费。服务器已保存但本地下载失败的节点应保留可恢复状态，“重试”优先取回原任务。
+- v0.12.7 媒体与项目同步：生成图下载后不得出现同 storageKey 的冗余 PUT；画布媒体最多同时同步三项，保存期间的新修改也必须最终写入服务器。切换账号时，旧下载不得进入新账号缓存或画布。
+- v0.12.7 回执与跨浏览器：本地缓存完成应立即记录 clientAckAt，页面绘制后另记 clientRenderedAt。原画布的 taskId 已保存时，关闭原浏览器、换浏览器登录后应能恢复已有图片；真实账号下的弱网和浏览器休眠场景仍需验收。
+
 - 视觉工作台结构化 Prompt 库：管理员启用 `fantasy-visual-studio-suite` 后，画布 Agent 应能从 `prompt-library.json` 路由 Portrait、Editorial、Cinematic、Cultural Poster、Fun Social、Photo Utility 六套工作流；优化 Prompt 时应遵守 `agentContract.compileOrder`、主体保护和负面收敛规则，文字准确场景优先生成无字底图；Skill 列表、服务器过滤和管理员保存均应接受该 ID，旧有五个视觉专项行为不变。
 
 v0.12.5 已将以下变更部署到主站；本页保留真实账号、模型和本地 Agent 的人工回归项目，未通过验收前不要移入正式功能说明。

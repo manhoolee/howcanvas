@@ -1,4 +1,6 @@
 import type { AiConfig } from "@/stores/use-config-store";
+import { getAuthEpoch } from "./backend";
+import { readImageResource } from "./image-transfer";
 
 export type ServerImageTaskStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "unknown";
 export type ServerImageTaskPhase = "queued" | "generating" | "upstream-complete" | "retrieving" | "persisted" | "failed" | "canceled" | "unknown";
@@ -48,27 +50,32 @@ export type ServerImageTaskSnapshot =
 
 const POLL_INTERVAL_MS = 1_500;
 const TASK_EVENT = "infinite-canvas:image-task";
+export const IMAGE_TASK_RESUME_EVENT = "infinite-canvas:resume-image-tasks";
 
 /**
  * 单次查询已有图片任务。不创建任务、不重新扣费；成功时同时取回原始结果。
  */
 export async function refreshServerImageTask(taskId: string, signal?: AbortSignal): Promise<ServerImageTaskSnapshot> {
-    const response = await fetch(`/api/image-tasks/${encodeURIComponent(taskId)}`, { credentials: "same-origin", signal });
-    const payload = await response.json().catch(() => ({})) as { task?: ServerImageTask; error?: string };
-    if (!response.ok || !payload.task) throw new Error(payload.error || `查询后台图片任务失败（${response.status}）`);
+    const payload = await readImageResource(`/api/image-tasks/${encodeURIComponent(taskId)}`, (response) => response.json(), signal) as { task?: ServerImageTask; error?: string };
+    if (!payload.task) throw new Error(payload.error || "查询后台图片任务失败");
     if (payload.task.status === "queued" || payload.task.status === "running") return { status: "pending", task: payload.task };
     if (payload.task.status !== "succeeded") return { status: "failed", task: payload.task, error: taskError(payload.task) };
 
-    const resultResponse = await fetch(`/api/image-tasks/${encodeURIComponent(taskId)}/result`, { credentials: "same-origin", signal });
-    const text = await resultResponse.text();
-    if (!resultResponse.ok) {
-        let message = text;
-        try { message = String(JSON.parse(text)?.error || text); } catch {}
-        throw new Error(message || `读取后台图片结果失败（${resultResponse.status}）`);
-    }
-    let result: unknown = text;
-    try { result = JSON.parse(text); } catch {}
+    const result = await readImageResource(`/api/image-tasks/${encodeURIComponent(taskId)}/result`, (response) => response.json(), signal);
     return { status: "succeeded", task: payload.task, result };
+}
+
+export async function waitForServerImageTask(taskId: string, options?: ServerImageTaskOptions) {
+    const epoch = getAuthEpoch();
+    while (true) {
+        options?.signal?.throwIfAborted();
+        if (getAuthEpoch() !== epoch) throw new Error("账号已切换，已停止取回原任务");
+        const snapshot = await refreshServerImageTask(taskId, options?.signal);
+        options?.onTaskUpdated?.(snapshot.task);
+        if (snapshot.status === "succeeded") return snapshot.result;
+        if (snapshot.status === "failed") throw Object.assign(new Error(snapshot.error), { taskStatus: snapshot.task.status });
+        await waitForTaskUpdate(taskId, options?.signal, options?.onTaskUpdated);
+    }
 }
 
 export function supportsServerImageTasks(config: Pick<AiConfig, "baseUrl">) {
@@ -111,37 +118,19 @@ export async function requestServerImageTask(
     };
     options?.signal?.addEventListener("abort", onAbort, { once: true });
     try {
-        while (true) {
-            if (options?.signal?.aborted) throw new Error("请求已取消");
-            const response = await fetch(`/api/image-tasks/${encodeURIComponent(taskId)}`, { credentials: "same-origin", signal: options?.signal });
-            const payload = await response.json().catch(() => ({})) as { task?: ServerImageTask; error?: string };
-            if (!response.ok || !payload.task) throw new Error(payload.error || `查询后台图片任务失败（${response.status}）`);
-            options?.onTaskUpdated?.(payload.task);
-            if (payload.task.status === "succeeded") break;
-            if (payload.task.status === "failed" || payload.task.status === "canceled" || payload.task.status === "unknown") throw new Error(taskError(payload.task));
-            await waitForTaskUpdate(taskId, options?.signal, options?.onTaskUpdated);
-        }
-        const result = await fetch(`/api/image-tasks/${encodeURIComponent(taskId)}/result`, { credentials: "same-origin", signal: options?.signal });
-        const text = await result.text();
-        if (!result.ok) {
-            let message = text;
-            try { message = String(JSON.parse(text)?.error || text); } catch {}
-            throw new Error(message || `读取后台图片结果失败（${result.status}）`);
-        }
-        try { return JSON.parse(text) as unknown; }
-        catch { return text; }
+        return await waitForServerImageTask(taskId, options);
     } finally {
         options?.signal?.removeEventListener("abort", onAbort);
     }
 }
 
-export async function acknowledgeImageTaskDelivery(taskId: string, metrics?: Record<string, number>) {
+export async function acknowledgeImageTaskDelivery(taskId: string, metrics?: Record<string, number>, stage: "cached" | "rendered" = "rendered") {
     if (!taskId) return;
     const response = await fetch(`/api/image-tasks/${encodeURIComponent(taskId)}/ack`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ metrics }),
+        body: JSON.stringify({ metrics, stage }),
     });
     if (!response.ok) {
         const payload = await response.json().catch(() => ({})) as { error?: string };
@@ -151,8 +140,9 @@ export async function acknowledgeImageTaskDelivery(taskId: string, metrics?: Rec
 
 export function acknowledgeImageTaskAfterRender(taskId?: string, metrics?: Record<string, number>) {
     if (!taskId) return;
+    const epoch = getAuthEpoch();
     void afterBrowserPaint()
-        .then(() => acknowledgeImageTaskDelivery(taskId, metrics))
+        .then(() => { if (getAuthEpoch() === epoch) return acknowledgeImageTaskDelivery(taskId, metrics); })
         .catch((error) => console.warn(`[image-task] delivery ACK ${taskId} failed`, error));
 }
 
@@ -176,20 +166,31 @@ function waitForTaskUpdate(taskId: string, signal?: AbortSignal, onTaskUpdated?:
         const finish = () => {
             window.clearTimeout(timer);
             window.removeEventListener(TASK_EVENT, handleTask);
+            window.removeEventListener("online", finish);
+            window.removeEventListener(IMAGE_TASK_RESUME_EVENT, finish);
+            document.removeEventListener("visibilitychange", visible);
             if (abort) signal?.removeEventListener("abort", abort);
             resolve();
         };
+        const visible = () => { if (document.visibilityState === "visible") finish(); };
         const timer = window.setTimeout(() => {
             finish();
         }, POLL_INTERVAL_MS);
         window.addEventListener(TASK_EVENT, handleTask);
+        window.addEventListener("online", finish);
+        window.addEventListener(IMAGE_TASK_RESUME_EVENT, finish);
+        document.addEventListener("visibilitychange", visible);
         if (!signal) return;
         abort = () => {
             window.clearTimeout(timer);
             window.removeEventListener(TASK_EVENT, handleTask);
+            window.removeEventListener("online", finish);
+            window.removeEventListener(IMAGE_TASK_RESUME_EVENT, finish);
+            document.removeEventListener("visibilitychange", visible);
             reject(new Error("请求已取消"));
         };
         signal.addEventListener("abort", abort, { once: true });
+        if (signal.aborted) abort();
     });
 }
 

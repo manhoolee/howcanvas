@@ -4,8 +4,8 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Group, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 
-import { refreshImageGenerationTask, requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
-import { acknowledgeImageTaskAfterRender, type ServerImageTask } from "@/services/api/image-task";
+import { recoverImageGenerationTask, refreshImageGenerationTask, requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
+import { acknowledgeImageTaskAfterRender, IMAGE_TASK_RESUME_EVENT, type ServerImageTask } from "@/services/api/image-task";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { pollVideoGenerationTask, requestVideoGeneration, storeGeneratedVideo, waitForVideoGenerationTask, type VideoGenerationTask } from "@/services/api/video";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
@@ -782,24 +782,27 @@ function InfiniteCanvasPage() {
 
     useEffect(() => {
         if (!projectLoaded) return;
-        const pending = nodesRef.current.filter((node) => node.type === CanvasNodeType.Image && node.metadata?.status === NODE_STATUS_LOADING && node.metadata.serverTaskId);
+        let active = true;
+        const controllers = new Set<AbortController>();
+        const resume = () => {
+        if (!active || document.visibilityState === "hidden" || !navigator.onLine) return;
+        const pending = nodesRef.current.filter((node) => node.type === CanvasNodeType.Image && node.metadata?.serverTaskId
+            && (node.metadata.status === NODE_STATUS_LOADING || node.metadata.status === NODE_STATUS_ERROR)
+            && !["failed", "canceled", "unknown"].includes(node.metadata.taskStatus || ""));
         pending.forEach((pendingNode) => {
             const taskId = pendingNode.metadata?.serverTaskId;
-            if (!taskId || resumedImageTasksRef.current.has(taskId)) return;
+            if (!taskId || resumedImageTasksRef.current.has(taskId) || generationRequestsRef.current.has(pendingNode.id)) return;
             resumedImageTasksRef.current.add(taskId);
             const controller = startGenerationRequest(pendingNode.id, pendingNode.id, pendingNode.id);
+            controllers.add(controller);
             void (async () => {
                 try {
                     const metadata = pendingNode.metadata || {};
-                    const generationConfig = buildGenerationConfig(effectiveConfig, pendingNode, "image");
-                    const references = metadata.generationType === "edit" ? await resolveMetadataReferences(metadata) : [];
-                    if (references === null) throw new Error("参考图片已丢失，无法恢复后台任务结果");
                     const options = imageTaskOptions(pendingNode.id, controller, taskId, metadata.imageStyleSnapshot);
-                    const recoveredPrompt = compileCanvasImagePrompt(metadata.sourcePrompt || metadata.prompt || "", metadata, imageStyleSelectionForNode(pendingNode)).effectivePrompt;
-                    const image = references.length
-                        ? await requestEdit({ ...generationConfig, count: "1" }, recoveredPrompt, references, undefined, options).then((items) => items[0])
-                        : await requestGeneration({ ...generationConfig, count: "1" }, recoveredPrompt, options).then((items) => items[0]);
+                    const recoveredPrompt = metadata.effectivePrompt || metadata.prompt || "";
+                    const image = (await recoverImageGenerationTask(taskId, options))[0];
                     const uploaded = await storeGeneratedImage(image);
+                    if (!active || controller.signal.aborted) return;
                     const defaults = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                     const size = fitNodeSize(uploaded.width, uploaded.height, defaults.width, defaults.height);
                     setNodes((prev) =>
@@ -832,16 +835,32 @@ function InfiniteCanvasPage() {
                     );
                     acknowledgeImageTaskAfterRender(image.serverTaskId || taskId);
                 } catch (error) {
-                    if (isGenerationCanceled(error)) return;
+                    if (!active || controller.signal.aborted || isGenerationCanceled(error)) return;
                     const errorDetails = error instanceof Error ? error.message : "恢复后台图片任务失败";
-                    setNodes((prev) => prev.map((node) => (node.id === pendingNode.id ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, taskStatus: "failed", taskStatusUpdatedAt: new Date().toISOString(), errorDetails } } : node)));
+                    const taskStatus = error && typeof error === "object" && "taskStatus" in error ? String(error.taskStatus) : undefined;
+                    setNodes((prev) => prev.map((node) => (node.id === pendingNode.id ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, ...(taskStatus ? { taskStatus } : {}), taskStatusUpdatedAt: new Date().toISOString(), errorDetails } } : node)));
                 } finally {
                     finishGenerationRequest(pendingNode.id, controller);
                     resumedImageTasksRef.current.delete(taskId);
+                    controllers.delete(controller);
                 }
             })();
         });
-    }, [effectiveConfig, finishGenerationRequest, imageTaskOptions, projectLoaded, startGenerationRequest]);
+        };
+        resume();
+        const timer = window.setInterval(resume, 30_000);
+        window.addEventListener("online", resume);
+        window.addEventListener(IMAGE_TASK_RESUME_EVENT, resume);
+        document.addEventListener("visibilitychange", resume);
+        return () => {
+            active = false;
+            clearInterval(timer);
+            window.removeEventListener("online", resume);
+            window.removeEventListener(IMAGE_TASK_RESUME_EVENT, resume);
+            document.removeEventListener("visibilitychange", resume);
+            controllers.forEach((controller) => controller.abort());
+        };
+    }, [finishGenerationRequest, imageTaskOptions, projectLoaded, startGenerationRequest]);
 
     useEffect(() => {
         if (!projectLoaded) return;
@@ -3059,6 +3078,11 @@ function InfiniteCanvasPage() {
 
     const handleRetryNode = useCallback(
         async (node: CanvasNodeData) => {
+            if (node.type === CanvasNodeType.Image && node.metadata?.serverTaskId && node.metadata.status !== NODE_STATUS_SUCCESS
+                && !["failed", "canceled", "unknown"].includes(node.metadata.taskStatus || "")) {
+                await refreshNodeTaskStatus(node.id);
+                return;
+            }
             const shouldRecoverExistingVideo = node.type === CanvasNodeType.Video && (Boolean(node.metadata?.videoTaskId) || /任务查询失败|取回结果失败/.test(node.metadata?.errorDetails || ""));
             if (shouldRecoverExistingVideo) {
                 await recoverVideoTask(node);
@@ -3238,7 +3262,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, imageTaskOptions, isAiConfigReady, message, openConfigDialog, recoverVideoTask, startGenerationRequest, videoTaskOptions],
+        [effectiveConfig, finishGenerationRequest, imageTaskOptions, isAiConfigReady, message, openConfigDialog, recoverVideoTask, refreshNodeTaskStatus, startGenerationRequest, videoTaskOptions],
     );
 
     const generateImageFromTextNode = useCallback(
