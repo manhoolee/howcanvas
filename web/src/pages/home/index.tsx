@@ -60,6 +60,9 @@ export default function IndexPage() {
                         <Button size="large" onClick={() => navigate("/canvas")}>
                             打开画布
                         </Button>
+                        <a href="/guide.html" target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center rounded-lg px-4 text-base text-stone-600 transition hover:bg-black/5 hover:text-stone-950 focus-visible:outline-2 focus-visible:outline-offset-4 dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white">
+                            操作指南
+                        </a>
                     </div>
                 </div>
 

@@ -9,6 +9,8 @@
 
 ## 操作手册
 
+- [简明 HTML 操作指南](../web/public/guide.html)
+
 - [画布节点操作手册](/docs/canvas/canvas-node-manual)
 - [画布快捷键](/docs/canvas/canvas-shortcuts)
 
