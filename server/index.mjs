@@ -70,7 +70,7 @@ const MAX_AI_REQUEST_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_AI_REQ
 const MAX_AI_RESPONSE_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_AI_RESPONSE_BYTES) || 256 * 1024 * 1024);
 const MAX_TEXT_ASSET_BYTES = Math.max(64 * 1024, Number(process.env.MAX_TEXT_ASSET_BYTES) || 1024 * 1024);
 const IMAGE_DOWNLOAD_TIMEOUT_MS = Math.max(5_000, Number(process.env.IMAGE_DOWNLOAD_TIMEOUT_MS) || 120_000);
-const IMAGE_TASK_CONCURRENCY = Math.min(8, Math.max(1, Math.floor(Number(process.env.IMAGE_TASK_CONCURRENCY) || 2)));
+const IMAGE_TASK_CONCURRENCY = Math.min(10, Math.max(1, Math.floor(Number(process.env.IMAGE_TASK_CONCURRENCY) || 2)));
 function normalizeOrigin(value) {
     try {
         const origin = new URL(String(value).trim()).origin;
@@ -884,6 +884,7 @@ const imageTaskQueue = createTaskQueue({
     worker: ({ userId, taskId }) => runImageTask(userId, taskId),
     onError: (error, task) => console.error(`[image-task] queue worker ${task.taskId} failed: ${error?.message || error}`),
 });
+console.info(`[image-task] concurrency ${IMAGE_TASK_CONCURRENCY}`);
 
 function safeTaskId(value) {
     const id = String(value || "");

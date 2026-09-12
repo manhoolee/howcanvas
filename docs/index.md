@@ -17,6 +17,7 @@
 - [本地开发](/docs/development/local-development)
 - [画布数据结构](/docs/development/canvas-data-structure)
 - [生成计费与台账](GENERATION_BILLING.md)
+- [图片与视频并发配置](CONCURRENCY_SETTINGS.md)
 - [视频按秒计费系统升级方案（设计与验收依据）](VIDEO_SECONDS_BILLING_UPGRADE.md)
 - [v0.12.9 升级与回滚说明](../RELEASE_NOTES_v0.12.9.md)
 - [画布同模型多渠道调度与服务连续性升级方案（调研与设计评审稿）](MULTI_CHANNEL_ROUTING_UPGRADE.md)
