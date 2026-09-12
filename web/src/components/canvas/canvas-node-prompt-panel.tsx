@@ -11,6 +11,7 @@ import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
 import { CanvasPromptChipInput } from "./canvas-prompt-chip-input";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
+import { CanvasGenerationPrice } from "./canvas-generation-price";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata } from "@/types/canvas";
 import { compileImagePrompt, sourcePromptFromDisplay } from "@/lib/image-style";
 import type { ImageStyleSelection } from "@/types/image-style";
@@ -101,16 +102,16 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent)}
             />
 
-            <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+            <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                     <CanvasPromptLibrary onSelect={updatePrompt} />
                     {mode === "image" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
+                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" onMissingConfig={() => openConfigDialog(true)} className="max-w-[220px]" />
                             <CanvasImageSettingsPopover
                                 config={config}
                                 placement="topLeft"
-                                buttonClassName="!h-10 !max-w-[160px] !justify-start !rounded-full !px-2.5"
+                                buttonClassName="!h-10 !max-w-[200px] !justify-start !rounded-full !px-2.5"
                                 showStyle={false}
                                 onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
                                 onMissingConfig={() => openConfigDialog(true)}
@@ -139,26 +140,29 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="text" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
                     )}
                 </div>
-                <Button
-                    type="primary"
-                    className="!h-10 !min-w-16 shrink-0 !rounded-full !px-3"
-                    danger={isRunning}
-                    disabled={!isRunning && !prompt.trim()}
-                    onClick={() => (isRunning ? onStop(node.id) : submit())}
-                    aria-label={isRunning ? "停止生成" : "生成"}
-                >
-                    <span className="flex items-center gap-1.5">
-                        {isRunning ? (
-                            <>
-                                <LoaderCircle className="size-4 animate-spin" />
-                                <Square className="size-3.5 fill-current" />
-                                <span className="text-xs font-medium">停止</span>
-                            </>
-                        ) : (
-                            <ArrowUp className="size-4" />
-                        )}
-                    </span>
-                </Button>
+                <div className="ml-auto flex shrink-0 items-center gap-3">
+                    <CanvasGenerationPrice config={config} kind={mode} />
+                    <Button
+                        type="primary"
+                        className={`!h-10 shrink-0 !rounded-full !px-3 ${isRunning ? "!min-w-16" : "!w-10 !min-w-10"}`}
+                        danger={isRunning}
+                        disabled={!isRunning && !prompt.trim()}
+                        onClick={() => (isRunning ? onStop(node.id) : submit())}
+                        aria-label={isRunning ? "停止生成" : "生成"}
+                    >
+                        <span className="flex items-center gap-1.5">
+                            {isRunning ? (
+                                <>
+                                    <LoaderCircle className="size-4 animate-spin" />
+                                    <Square className="size-3.5 fill-current" />
+                                    <span className="text-xs font-medium">停止</span>
+                                </>
+                            ) : (
+                                <ArrowUp className="size-4" />
+                            )}
+                        </span>
+                    </Button>
+                </div>
             </div>
         </div>
     );

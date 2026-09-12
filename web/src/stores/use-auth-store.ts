@@ -18,6 +18,7 @@ export type ActionResult = { ok: boolean; error?: string };
 type AuthState = {
     accounts: Account[];
     currentUserId: string | null;
+    billingLoaded: boolean;
     pricing: Pricing;
     modelPricing: Record<string, number>;
     videoPricingUnit: "task" | "second";
@@ -55,7 +56,7 @@ async function loadServerAiConfig(userId: string) {
         // 登录/退出或切换账号期间，旧请求可能晚于新会话返回；禁止它把
         // 上一个账号的渠道元数据和 Agent 配置重新注入当前页面。
         if (requestEpoch !== getAuthEpoch() || useAuthStore.getState().currentUserId !== userId) return;
-        if (data.billing) useAuthStore.setState(data.billing);
+        if (data.billing) useAuthStore.setState({ ...data.billing, billingLoaded: true });
         applyServerAiConfig(data);
     } catch {
         // 后端未配置 AI 信息时忽略
@@ -110,6 +111,7 @@ function bindCanvasOwner(user: Account | null) {
 export const useAuthStore = create<AuthState>()((set, get) => ({
     accounts: [],
     currentUserId: null,
+    billingLoaded: false,
     pricing: { ...DEFAULT_PRICING },
     modelPricing: {},
     videoPricingUnit: "task",
@@ -128,7 +130,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         if (get().initialized) return;
         try {
             const { user } = await backend.me();
-            set({ accounts: [user], currentUserId: user.id });
+            set({ accounts: [user], currentUserId: user.id, billingLoaded: false });
             bindCanvasOwner(user);
             void loadServerAiConfig(user.id);
             if (user.role === "admin") void get().refreshAdminData();
@@ -145,7 +147,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         try {
             const { token, user } = await backend.register(input);
             setToken(token || "");
-            set({ accounts: [user], currentUserId: user.id });
+            set({ accounts: [user], currentUserId: user.id, billingLoaded: false });
             bindCanvasOwner(user);
             void loadServerAiConfig(user.id);
             return { ok: true };
@@ -159,7 +161,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         try {
             const { token, user } = await backend.login(input);
             setToken(token || "");
-            set({ accounts: [user], currentUserId: user.id });
+            set({ accounts: [user], currentUserId: user.id, billingLoaded: false });
             bindCanvasOwner(user);
             void loadServerAiConfig(user.id);
             if (user.role === "admin") void get().refreshAdminData();
@@ -173,7 +175,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         bumpAuthEpoch();
         setToken("");
         applyServerAiConfig({ channels: [], defaultModels: { image: "", video: "", audio: "", text: "" }, agentLlm: { enabled: false, model: "", skills: [] } });
-        set({ currentUserId: null, accounts: [] });
+        set({ currentUserId: null, accounts: [], billingLoaded: false });
         bindCanvasOwner(null);
         await backend.logout().catch(() => undefined);
     },
@@ -183,6 +185,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             const [{ users }, { settings }] = await Promise.all([backend.adminUsers(), backend.adminSettings()]);
             set({
                 accounts: users,
+                billingLoaded: true,
                 pricing: settings.pricing,
                 modelPricing: settings.modelPricing || {},
                 videoPricingUnit: settings.videoPricingUnit || "task",
