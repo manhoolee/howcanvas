@@ -29,6 +29,8 @@ test("terminal failure, temporary errors and successful generation are distinct"
     assert.equal(outcome({ error: "provider unavailable" }).state, "unknown");
     assert.equal(videoOutcome(Buffer.from("invalid JSON")).state, "unknown");
     assert.equal(outcome({ task_id: "t1" }).taskId, "t1");
+    assert.equal(outcome({ status: "queued", metadata: { url: "" } }).state, "pending");
+    assert.equal(outcome({ status: "queued", metadata: { url: "" } }).phase, "queued");
 });
 
 test("all supported video lengths reserve 15 seconds and invalid model durations are rejected", async () => {

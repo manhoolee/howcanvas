@@ -124,6 +124,9 @@ test("video reservations, free polling, delivery confirmation, refunds and image
         await new Promise((resolve) => setTimeout(resolve, 100));
     }
     assert.equal(receipts()[0].status, "completed", output + JSON.stringify(receipts()[0]));
+    const deliveredTask = (await request(`/api/video-tasks/${channelId}/slow`, { cookie })).data.task;
+    assert.equal(deliveredTask.phase, "persisted");
+    assert.equal(deliveredTask.receivedBytes, video.length);
     assert.equal((await ack("slow")).status, 200);
     assert.equal((await ack("slow")).status, 200);
     assert.equal(receipts()[0].status, "completed");
@@ -186,6 +189,8 @@ test("video reservations, free polling, delivery confirmation, refunds and image
     const history = await request(`/api/admin/billing-ledger/${confirmed.id}/events`, { cookie: admin.cookie });
     assert.equal(history.data.events.filter((event) => event.event === "precharged").length, 1);
     assert.equal(history.data.events.filter((event) => event.event === "confirmed").length, 1);
+    assert.ok(history.data.events.some((event) => event.event === "download-started"));
+    assert.ok(history.data.events.some((event) => event.event === "download-completed" && event.receipt.delivery.phase === "verifying"));
     assert.equal(history.data.events[0].receipt.status, "pending", "event snapshots must not change after confirmation");
     assert.equal(history.data.events.at(-1).receipt.taskId, "slow");
     const filtered = await request("/api/admin/billing-ledger?taskId=slow&status=completed&limit=1", { cookie: admin.cookie });

@@ -3,8 +3,52 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
+import { addAbortSignal, Readable } from "node:stream";
 import { videoOutcome } from "./generation-billing.mjs";
 import { durationCost } from "./credit-accounting.mjs";
+import { createAiDispatcher } from "./ai-transport.mjs";
+
+export const VIDEO_DOWNLOAD_TIMEOUT_MS = Math.max(1000, Number(process.env.VIDEO_DOWNLOAD_TIMEOUT_MS) || 600000);
+const downloadDispatcher = createAiDispatcher(VIDEO_DOWNLOAD_TIMEOUT_MS);
+
+export async function downloadVideo(urlValue, channel, { assertSafeUrl, maximumBytes, onProgress = () => {}, timeoutMs = VIDEO_DOWNLOAD_TIMEOUT_MS }) {
+    let url = new URL(urlValue);
+    const trusted = new URL(channel.baseUrl).origin;
+    const signal = AbortSignal.timeout(timeoutMs);
+    for (let redirects = 0; redirects < 5; redirects++) {
+        if (!/^https?:$/.test(url.protocol) || url.username || url.password) throw new Error("渠道视频地址无效");
+        await assertSafeUrl(url, trusted);
+        const response = await fetch(url, { dispatcher: downloadDispatcher, redirect: "manual", headers: { Accept: "video/*", ...(url.origin === trusted ? { Authorization: `Bearer ${channel.apiKey}` } : {}) }, signal });
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+            await response.body?.cancel();
+            const location = response.headers.get("location");
+            if (!location) throw new Error("视频下载跳转无目标");
+            url = new URL(location, url);
+            continue;
+        }
+        if (!response.ok) { await response.body?.cancel(); throw new Error(`视频取回失败 HTTP ${response.status}`); }
+        const length = Number(response.headers.get("content-length"));
+        if (length > maximumBytes) { await response.body?.cancel(); throw new Error("视频超过文件大小上限"); }
+        if (!response.body) throw new Error("视频内容为空");
+        const totalBytes = Number.isSafeInteger(length) && length > 0 ? length : 0;
+        const chunks = [];
+        let receivedBytes = 0, lastReportedAt = 0;
+        onProgress({ receivedBytes, totalBytes });
+        // Bind the deadline to body consumption as well as the initial HTTP request.
+        for await (const chunk of addAbortSignal(signal, Readable.fromWeb(response.body))) {
+            receivedBytes += chunk.length;
+            if (receivedBytes > maximumBytes) throw new Error("视频超过文件大小上限");
+            chunks.push(Buffer.from(chunk));
+            if (Date.now() - lastReportedAt >= 2000) {
+                onProgress({ receivedBytes, totalBytes });
+                lastReportedAt = Date.now();
+            }
+        }
+        onProgress({ receivedBytes, totalBytes });
+        return Buffer.concat(chunks);
+    }
+    throw new Error("视频下载跳转过多");
+}
 
 const execute = promisify(execFile);
 export async function probeVideo(file) {
@@ -34,26 +78,12 @@ export function createVideoDelivery({ database, directory, findUser, fetchProvid
         fs.mkdirSync(folder, { recursive: true });
         return path.join(folder, `${receipt.generationTaskId}.mp4`);
     }
-    async function download(urlValue, channel) {
-        let url = new URL(urlValue);
-        const trusted = new URL(channel.baseUrl).origin;
-        for (let redirects = 0; redirects < 5; redirects++) {
-            if (!/^https?:$/.test(url.protocol) || url.username || url.password) throw new Error("渠道视频地址无效");
-            await assertSafeUrl(url, trusted);
-            const response = await fetch(url, { redirect: "manual", headers: { Accept: "video/*", ...(url.origin === trusted ? { Authorization: `Bearer ${channel.apiKey}` } : {}) }, signal: AbortSignal.timeout(120000) });
-            if ([301, 302, 303, 307, 308].includes(response.status)) {
-                await response.body?.cancel();
-                const location = response.headers.get("location");
-                if (!location) throw new Error("视频下载跳转无目标");
-                url = new URL(location, url);
-                continue;
-            }
-            if (!response.ok) { await response.body?.cancel(); throw new Error(`视频取回失败 HTTP ${response.status}`); }
-            if (Number(response.headers.get("content-length")) > maximumBytes) { await response.body?.cancel(); throw new Error("视频超过文件大小上限"); }
-            if (!response.body) throw new Error("视频内容为空");
-            return readLimited(response.body, maximumBytes);
-        }
-        throw new Error("视频下载跳转过多");
+    function updateDelivery(receipt, patch, eventType) {
+        const current = database.getBillingReceipt(receipt.userId, receipt.id);
+        if (!current || current.status !== "pending") return;
+        const phaseChanged = patch.phase && patch.phase !== current.delivery?.phase;
+        current.delivery = { ...current.delivery, ...patch, updatedAt: new Date().toISOString() };
+        database.recordBilling(current, eventType || (phaseChanged ? "delivery-phase" : undefined));
     }
     async function process(receipt) {
         if (!receipt.taskId || !receipt.channelRevisionId || !receipt.submissionUrl) return;
@@ -70,6 +100,7 @@ export function createVideoDelivery({ database, directory, findUser, fetchProvid
             const target = fileFor(current);
             let metadata;
             if (!fs.existsSync(target)) {
+                if (current.delivery?.phase === "retrying") updateDelivery(current, { phase: current.upstreamState === "ready" ? "retrieving" : "generating", receivedBytes: 0, totalBytes: 0, retryAt: undefined });
                 const response = await fetchProvider(videoQueryUrl(current, channel), channel);
                 if (!response.ok) {
                     await response.body?.cancel();
@@ -88,12 +119,18 @@ export function createVideoDelivery({ database, directory, findUser, fetchProvid
                 current.lastCheckedAt = new Date().toISOString();
                 if (outcome.providerReportedSeconds) current.providerReportedSeconds = outcome.providerReportedSeconds;
                 database.recordBilling(current, receipt.upstreamState !== outcome.state ? "task-status" : undefined);
-                if (outcome.state !== "ready") return;
+                if (outcome.state !== "ready") {
+                    updateDelivery(current, { phase: current.needsReview ? "review" : outcome.phase || "generating", retryAt: undefined });
+                    return;
+                }
                 const resultUrl = outcome.resultUrl || (/\/videos$/.test(new URL(current.submissionUrl).pathname) ? `${videoQueryUrl(current, channel)}/content` : "");
                 if (!resultUrl) throw new Error("渠道已完成但结果地址尚未取得");
                 database.setVideoResult(current.id, resultUrl);
-                const buffer = await download(resultUrl, channel);
+                const startedAt = Date.now();
+                updateDelivery(current, { phase: "retrieving", receivedBytes: 0, totalBytes: 0, retryAt: undefined, downloadStartedAt: new Date(startedAt).toISOString(), timeoutMs: VIDEO_DOWNLOAD_TIMEOUT_MS }, "download-started");
+                const buffer = await downloadVideo(resultUrl, channel, { assertSafeUrl, maximumBytes, onProgress: (progress) => updateDelivery(current, progress) });
                 if (!buffer.length) throw new Error("渠道返回空视频");
+                updateDelivery(current, { phase: "verifying", downloadDurationMs: Date.now() - startedAt }, "download-completed");
                 const temporary = `${target}.probe.mp4`;
                 fs.writeFileSync(temporary, buffer, { mode: 0o600 });
                 try { metadata = await probeVideo(temporary); } finally { fs.unlinkSync(temporary); }
@@ -102,6 +139,7 @@ export function createVideoDelivery({ database, directory, findUser, fetchProvid
                 current = { ...current, ...metadata };
             }
             const buffer = fs.readFileSync(target);
+            updateDelivery(current, { phase: "verifying", retryAt: undefined });
             metadata ||= await probeVideo(target);
             current = database.getBillingReceipt(receipt.userId, receipt.id);
             if (current.status !== "pending") return;
@@ -118,14 +156,14 @@ export function createVideoDelivery({ database, directory, findUser, fetchProvid
             const current = database.getBillingReceipt(receipt.userId, receipt.id);
             if (current?.status === "pending") {
                 // Do not persist signed URLs, credentials or raw provider response bodies.
-                const reason = error.code === "ENOENT" ? "服务器视频测量工具不可用" : String(error.message || "取回失败").replace(/https?:\/\/\S+/g, "[地址]").slice(0, 300);
-                const changed = current.lastError !== reason;
+                const reason = error.code === "ENOENT" ? "服务器视频测量工具不可用" : ["TimeoutError", "AbortError"].includes(error.name) ? "视频取回超时，等待重试原任务" : String(error.message || "取回失败").replace(/https?:\/\/\S+/g, "[地址]").slice(0, 300);
                 current.lastError = reason;
                 current.lastCheckedAt = new Date().toISOString();
                 current.attempts = Number(current.attempts || 0) + 1;
                 if (/超过15秒|ID.*不符/.test(reason)) { current.needsReview = true; delay = 3600000; }
                 else delay = Math.max(delay, Math.min(300000, 20000 * 2 ** Math.min(current.attempts, 4)));
-                database.recordBilling(current, changed ? "delivery-failed" : undefined);
+                current.delivery = { ...current.delivery, phase: current.needsReview ? "review" : "retrying", failedPhase: current.delivery?.phase || "generating", retryAt: new Date(Date.now() + delay).toISOString(), updatedAt: new Date().toISOString() };
+                database.recordBilling(current, "delivery-failed");
             }
         } finally {
             clearInterval(heartbeat);

@@ -1541,7 +1541,8 @@ app.get("/api/video-tasks/:channelId/:taskId", auth, async (req, res) => {
     if (!receipt) return res.status(404).json({ error: "视频任务不存在" });
     if (receipt.status === "pending") void videoDelivery.run(receipt).catch(() => {});
     receipt = billingReceipt(req.user, receipt.id);
-    res.json({ task: { id: receipt.taskId, generationTaskId: receipt.generationTaskId, status: receipt.refunded ? "failed" : receipt.status === "completed" ? "completed" : "pending", error: receipt.lastError || "", needsReview: Boolean(receipt.needsReview), actualDurationMs: receipt.actualDurationMs, url: receipt.status === "completed" ? `/api/video-tasks/${encodeURIComponent(receipt.channelId)}/${encodeURIComponent(receipt.taskId)}/media` : undefined } });
+    const phase = receipt.refunded ? "failed" : receipt.status === "completed" ? "persisted" : receipt.needsReview ? "review" : receipt.delivery?.phase || (receipt.upstreamState === "ready" ? "retrieving" : "generating");
+    res.json({ task: { id: receipt.taskId, generationTaskId: receipt.generationTaskId, status: receipt.refunded ? "failed" : receipt.status === "completed" ? "completed" : "pending", phase, receivedBytes: receipt.delivery?.receivedBytes || 0, totalBytes: receipt.delivery?.totalBytes || 0, retryAt: receipt.delivery?.retryAt, updatedAt: receipt.delivery?.updatedAt || receipt.lastCheckedAt, error: receipt.lastError || "", needsReview: Boolean(receipt.needsReview), actualDurationMs: receipt.actualDurationMs, url: receipt.status === "completed" ? `/api/video-tasks/${encodeURIComponent(receipt.channelId)}/${encodeURIComponent(receipt.taskId)}/media` : undefined } });
 });
 
 app.get("/api/video-tasks/:channelId/:taskId/media", auth, (req, res) => {

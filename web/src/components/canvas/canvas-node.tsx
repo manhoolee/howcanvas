@@ -4,6 +4,7 @@ import { ChevronRight, Group, Image as ImageIcon, Music2, Puzzle, RefreshCw, Sta
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
+import { videoTaskDownloadPercent, videoTaskProgressDetail, videoTaskStatusLabel } from "@/lib/video-task-status";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { buildNodeContext } from "@/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -500,16 +501,20 @@ const TASK_STATUS_PROGRESS: Record<string, number> = {
 
 function LoadingContent({ node, theme }: Pick<NodeContentRendererProps, "node" | "theme">) {
     const status = node.metadata?.taskStatus || "generating";
-    const label = TASK_STATUS_LABELS[status] || "生成中";
-    const progress = TASK_STATUS_PROGRESS[status] || 36;
+    const isVideo = node.type === CanvasNodeType.Video;
+    const videoProgress = node.metadata?.videoTaskProgress || { phase: status === "submitted" ? "queued" : status };
+    const label = isVideo ? videoTaskStatusLabel(videoProgress) : TASK_STATUS_LABELS[status] || "生成中";
+    const progress = isVideo ? videoTaskDownloadPercent(videoProgress) : TASK_STATUS_PROGRESS[status] || 36;
+    const detail = isVideo ? videoTaskProgressDetail(videoProgress) : "";
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-8" style={{ color: theme.node.activeStroke }} aria-live="polite">
             <div className="grid size-9 place-items-center rounded-md border" style={{ borderColor: theme.node.stroke, background: theme.node.fill }}>
                 <span className="size-2 rounded-full" style={{ background: theme.node.activeStroke }} />
             </div>
-            <span className="text-xs">{label}</span>
+            <span className="text-center text-xs">{label}</span>
+            {detail && <span className="text-center text-[11px] tabular-nums">{detail}</span>}
             <div className="h-1 w-full max-w-40 overflow-hidden rounded-full" style={{ background: theme.node.stroke }}>
-                <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${progress}%`, background: theme.node.activeStroke }} />
+                <div className={`h-full rounded-full transition-[width] duration-300 ${progress === undefined ? "animate-pulse" : ""}`} style={{ width: progress === undefined ? "100%" : `${progress}%`, background: theme.node.activeStroke }} />
             </div>
         </div>
     );

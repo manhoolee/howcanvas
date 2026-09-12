@@ -82,6 +82,7 @@ export type CanvasNodeMetadata = {
     videoTaskModel?: string;
     taskStatus?: string;
     taskStatusUpdatedAt?: string;
+    videoTaskProgress?: import("@/lib/video-task-status").VideoTaskProgress;
     fontSize?: number;
     generationMode?: CanvasGenerationMode;
     generationType?: CanvasImageGenerationType;

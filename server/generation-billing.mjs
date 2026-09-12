@@ -32,8 +32,8 @@ export function videoOutcome(body) {
     if (status === "expired") return { state: "unknown", taskId, reason: "渠道返回过期，需核实任务或链接是否过期" };
     if (task?.error || payload?.error || (payload?.code !== undefined && ![0, 200, "0", "200"].includes(payload.code))) return { state: "unknown", taskId, reason };
     const url = task?.video_url || task?.url || task?.output || task?.result_url || task?.content?.video_url || task?.content?.url || task?.metadata?.url;
-    if (typeof url === "string" || ["succeeded", "completed", "success"].includes(status)) return { state: "ready", taskId, providerReportedSeconds, resultUrl: typeof url === "string" ? url : "" };
-    return { state: "pending", taskId };
+    if ((typeof url === "string" && url.trim()) || ["succeeded", "completed", "success"].includes(status)) return { state: "ready", taskId, providerReportedSeconds, resultUrl: typeof url === "string" ? url : "" };
+    return { state: "pending", taskId, phase: ["queued", "pending", "not_start"].includes(status) ? "queued" : "generating" };
 }
 
 export async function videoBillingQuantity(req, pricingUnit, channel = {}) {

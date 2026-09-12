@@ -11,6 +11,7 @@ import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { VideoSettingsPanel, normalizeVideoResolutionValue, normalizeVideoSizeValue, videoSizeLabel } from "@/components/video-settings-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
+import { videoTaskDownloadPercent, videoTaskProgressDetail, videoTaskStatusLabel, type VideoTaskProgress } from "@/lib/video-task-status";
 import { boolConfig, isSeedanceVideoConfig, normalizeSeedanceRatio, seedanceReferenceLabel, seedanceVideoReferenceError, seedanceVideoReferenceHint, SEEDANCE_REFERENCE_LIMITS } from "@/lib/seedance-video";
 import { isMiniMaxH3VideoConfig, normalizeMiniMaxH3Duration, normalizeMiniMaxH3Ratio, normalizeMiniMaxH3Resolution } from "@/lib/minimax-h3-video";
 import { deleteStoredMedia, resolveMediaUrl, uploadMediaFile } from "@/services/file-storage";
@@ -42,6 +43,7 @@ type GenerationResult = {
     status: "pending" | "success" | "failed";
     video?: GeneratedVideo;
     error?: string;
+    progress?: VideoTaskProgress;
 };
 
 type GenerationLog = {
@@ -378,9 +380,12 @@ export default function VideoPage() {
         const taskConfig = buildVideoConfig({ ...effectiveConfig, ...log.config }, log.task.model || log.model);
         let terminalFailure = false;
         try {
-            for (let attempt = 0; attempt < 120; attempt += 1) {
+            const maxAttempts = log.task.channelId || /::/.test(log.task.model) ? (log.task.provider === "minimax-h3" ? 180 : 360) : 120;
+            for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
                 if (!isCurrentGeneration()) return;
-                const state = await pollVideoGenerationTask(configOverride || taskConfig, log.task);
+                const state = await pollVideoGenerationTask(configOverride || taskConfig, log.task, { onTaskUpdated: (progress) => {
+                    if (isCurrentGeneration()) setResults([{ id: log.id, status: "pending", progress }]);
+                } });
                 if (!isCurrentGeneration()) return;
                 if (state.status === "completed") {
                     const stored = await storeGeneratedVideo(state.result);
@@ -401,7 +406,7 @@ export default function VideoPage() {
                     return;
                 }
                 if (state.status === "failed") { terminalFailure = true; throw new Error(state.error); }
-                if (attempt === 119) throw new Error("视频结果待确认，请稍后取回原任务");
+                if (attempt === maxAttempts - 1) throw new Error("视频结果待确认，请稍后取回原任务");
                 await delay(Math.max(state.retryAfterMs || 0, log.task.provider === "minimax-h3" ? 20_000 : log.task.provider === "seedance" ? 5000 : 2500));
             }
         } catch (error) {
@@ -579,7 +584,7 @@ export default function VideoPage() {
                         </div>
                         {results.length ? (
                             <div className="grid gap-4">
-                                {results.map((result) => (result.status === "success" && result.video ? <ResultVideoCard key={result.id} video={result.video} onDownload={downloadVideo} onSaveAsset={saveResultToAssets} /> : result.status === "failed" ? <FailedVideoCard key={result.id} error={result.error || "生成失败"} onRetry={retryResult} /> : <PendingVideoCard key={result.id} />))}
+                                {results.map((result) => (result.status === "success" && result.video ? <ResultVideoCard key={result.id} video={result.video} onDownload={downloadVideo} onSaveAsset={saveResultToAssets} /> : result.status === "failed" ? <FailedVideoCard key={result.id} error={result.error || "生成失败"} onRetry={retryResult} /> : <PendingVideoCard key={result.id} progress={result.progress} />))}
                             </div>
                         ) : (
                             <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed border-stone-300 text-center dark:border-stone-700 lg:min-h-[560px]">
@@ -659,12 +664,16 @@ function ResultVideoCard({ video, onDownload, onSaveAsset }: { video: GeneratedV
     );
 }
 
-function PendingVideoCard() {
+function PendingVideoCard({ progress }: { progress?: VideoTaskProgress }) {
+    const detail = videoTaskProgressDetail(progress);
+    const percent = videoTaskDownloadPercent(progress);
     return (
         <div className="relative aspect-video overflow-hidden rounded-lg border border-dashed border-stone-300 bg-stone-50 dark:border-stone-700 dark:bg-stone-900">
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-stone-500 dark:text-stone-400">
                 <LoaderCircle className="size-6 animate-spin" />
-                <span>生成中</span>
+                <span className="px-4 text-center">{videoTaskStatusLabel(progress)}</span>
+                {detail && <span className="px-4 text-center text-xs tabular-nums">{detail}</span>}
+                {percent !== undefined && <progress className="h-1 w-40 max-w-[70%]" aria-label="视频取回进度" max={100} value={percent} />}
             </div>
         </div>
     );

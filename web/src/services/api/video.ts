@@ -13,6 +13,7 @@ import { saveGeneratedBlob } from "@/services/user-files";
 import { postGeneration } from "./generation-request";
 import { backend } from "./backend";
 import { useAuthStore } from "@/stores/use-auth-store";
+import type { VideoTaskProgress } from "@/lib/video-task-status";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
@@ -44,11 +45,11 @@ type MiniMaxH3Task = {
     error?: { code?: string; message?: string } | null;
 };
 type ApiEnvelope<T> = T | { code?: number | string; data?: T | null; msg?: string; message?: string; error?: { message?: string } };
-type RequestOptions = { requestId?: string; signal?: AbortSignal; skipCharge?: boolean; onTaskSubmitted?: (task: VideoGenerationTask) => void };
+type RequestOptions = { requestId?: string; signal?: AbortSignal; skipCharge?: boolean; onTaskSubmitted?: (task: VideoGenerationTask) => void; onTaskUpdated?: (progress: VideoTaskProgress) => void };
 
 export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string; billing?: { channelId: string; taskId: string; ownerId: string | null } };
 export type VideoGenerationTask = { id: string; provider: "openai" | "seedance" | "grok-v2" | "minimax-h3" | "plugin"; model: string; channelId?: string };
-export type VideoGenerationTaskState = { status: "pending"; retryAfterMs?: number } | { status: "completed"; result: VideoGenerationResult } | { status: "failed"; error: string };
+export type VideoGenerationTaskState = { status: "pending"; retryAfterMs?: number; progress?: VideoTaskProgress } | { status: "completed"; result: VideoGenerationResult } | { status: "failed"; error: string };
 
 /** Results for scripted (plugin) video models, which run their own create+poll in one shot at task creation. */
 const pluginVideoResults = new Map<string, VideoGenerationResult>();
@@ -74,16 +75,17 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
 }
 
 /** 继续查询一个已经创建的任务，不创建新任务，也不再次扣费。 */
-export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: Pick<RequestOptions, "signal">): Promise<VideoGenerationResult> {
+export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: Pick<RequestOptions, "signal" | "onTaskUpdated">): Promise<VideoGenerationResult> {
     // H3 tasks may take several minutes.  A 5-second poll would exhaust the server's
     // shared AI-proxy allowance before the task completes, so keep it deliberately low.
     const delayMs = task.provider === "minimax-h3" ? 20_000 : task.provider === "seedance" ? 5000 : 2500;
-    for (let attempt = 0; attempt < 120; attempt += 1) {
+    const maxAttempts = task.channelId || /::/.test(task.model) ? Math.ceil(3600000 / Math.max(delayMs, 10000)) : 120;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
         const state = await pollVideoGenerationTask(config, task, options);
         if (state.status === "completed") return state.result;
         if (state.status === "failed") throw new Error(state.error);
-        if (attempt === 119) throw new Error(`${task.provider === "seedance" ? "Seedance " : task.provider === "minimax-h3" ? "MiniMax H3 " : ""}视频生成超时，可稍后再次取回结果`);
+        if (attempt === maxAttempts - 1) throw new Error("视频结果仍待确认，可稍后再次取回原任务");
         await delay(Math.max(delayMs, state.retryAfterMs || 0), options?.signal);
     }
     throw new Error("视频生成超时，可稍后再次取回结果");
@@ -122,11 +124,14 @@ export async function pollVideoGenerationTask(config: AiConfig, task: VideoGener
     const channelId = task.channelId || task.model.match(/^(?:srv_)?([^:]+)::/)?.[1];
     if (channelId) {
         const ownerId = useAuthStore.getState().currentUserId;
-        const { data } = await axios.get<{ task: { status: string; url?: string; error?: string } }>(`/api/video-tasks/${encodeURIComponent(channelId)}/${encodeURIComponent(task.id)}`, { signal: options?.signal });
+        const { data } = await axios.get<{ task: VideoTaskProgress & { status: string; url?: string; error?: string } }>(`/api/video-tasks/${encodeURIComponent(channelId)}/${encodeURIComponent(task.id)}`, { signal: options?.signal });
         if (useAuthStore.getState().currentUserId !== ownerId) throw new Error("账号已切换");
+        const { phase, receivedBytes, totalBytes, retryAt, updatedAt } = data.task;
+        const progress = { id: task.id, phase: phase || "generating", receivedBytes, totalBytes, retryAt, updatedAt };
+        options?.onTaskUpdated?.(progress);
         if (data.task.status === "failed") return { status: "failed", error: data.task.error || "视频生成失败，预扣已退回" };
         if (data.task.status === "completed" && data.task.url) return { status: "completed", result: { url: data.task.url, billing: { channelId, taskId: task.id, ownerId } } };
-        return { status: "pending", retryAfterMs: 10000 };
+        return { status: "pending", retryAfterMs: 10000, progress };
     }
     if (task.provider === "plugin") {
         const result = pluginVideoResults.get(task.id);
@@ -138,6 +143,7 @@ export async function pollVideoGenerationTask(config: AiConfig, task: VideoGener
     const state = await (task.provider === "grok-v2" ? pollGrokVideoTask(requestConfig, task, options)
         : task.provider === "minimax-h3" ? pollMiniMaxH3Task(requestConfig, task, options)
         : task.provider === "seedance" ? pollSeedanceTask(requestConfig, task, options) : pollOpenAIVideoTask(requestConfig, task, options));
+    options?.onTaskUpdated?.({ id: task.id, phase: state.status === "completed" ? "persisted" : state.status === "failed" ? "failed" : "generating" });
     const managedChannelId = requestConfig.baseUrl.match(/^\/api\/ai\/([A-Za-z0-9_-]+)/)?.[1];
     if (state.status === "completed" && managedChannelId) state.result.billing = { channelId: managedChannelId, taskId: task.id, ownerId };
     return state;
@@ -190,7 +196,7 @@ export async function storeGeneratedVideo(result: VideoGenerationResult): Promis
             let blob = result.blob;
             if (!blob && result.url) {
                 const url = /^https?:\/\//i.test(result.url) ? `/api/media/proxy?url=${encodeURIComponent(result.url)}` : result.url;
-                blob = (await axios.get<Blob>(url, { responseType: "blob", timeout: 120_000 })).data;
+                blob = (await axios.get<Blob>(url, { responseType: "blob", timeout: 600_000 })).data;
             }
             if (!blob) throw new Error("视频尚未取回，预扣额度保留待确认");
             await assertVideoBlob(blob);

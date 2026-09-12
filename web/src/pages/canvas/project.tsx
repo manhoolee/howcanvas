@@ -8,6 +8,7 @@ import { recoverImageGenerationTask, refreshImageGenerationTask, requestEdit, re
 import { acknowledgeImageTaskAfterRender, IMAGE_TASK_RESUME_EVENT, type ServerImageTask } from "@/services/api/image-task";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { pollVideoGenerationTask, requestVideoGeneration, storeGeneratedVideo, waitForVideoGenerationTask, type VideoGenerationTask } from "@/services/api/video";
+import { videoTaskStatusLabel, type VideoTaskProgress } from "@/lib/video-task-status";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { storeGeneratedImage, uploadImage } from "@/services/image-storage";
 import { uploadMediaFile } from "@/services/file-storage";
@@ -474,6 +475,7 @@ function InfiniteCanvasPage() {
                                       videoTaskModel: task.model,
                                       status: NODE_STATUS_LOADING,
                                       taskStatus: "submitted",
+                                      videoTaskProgress: { id: task.id, phase: "queued" },
                                       taskStatusUpdatedAt: new Date().toISOString(),
                                       errorDetails: undefined,
                                   },
@@ -481,6 +483,11 @@ function InfiniteCanvasPage() {
                             : node,
                     ),
                 );
+            },
+            onTaskUpdated: (progress: VideoTaskProgress) => {
+                if (controller.signal.aborted) return;
+                setNodes((prev) => prev.map((node) => node.id === targetNodeId && node.metadata?.videoTaskId === progress.id
+                    ? { ...node, metadata: { ...node.metadata, taskStatus: progress.phase, videoTaskProgress: progress, taskStatusUpdatedAt: progress.updatedAt || new Date().toISOString() } } : node));
             },
         }),
         [],
@@ -553,7 +560,7 @@ function InfiniteCanvasPage() {
             );
             const controller = startGenerationRequest(node.id, node.id, node.id);
             try {
-                const video = await storeGeneratedVideo(await waitForVideoGenerationTask(generationConfig, task, { signal: controller.signal }));
+                const video = await storeGeneratedVideo(await waitForVideoGenerationTask(generationConfig, task, videoTaskOptions(node.id, controller)));
                 const videoSize = fitNodeSize(video.width || node.width, video.height || node.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
                 setNodes((prev) =>
                     prev.map((item) =>
@@ -586,7 +593,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [askVideoTaskId, effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
+        [askVideoTaskId, effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startGenerationRequest, videoTaskOptions],
     );
 
     const refreshNodeTaskStatus = useCallback(
@@ -657,8 +664,8 @@ function InfiniteCanvasPage() {
                     }
                     const state = await pollVideoGenerationTask(generationConfig, task);
                     if (state.status === "pending") {
-                        setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, taskStatus: "running", taskStatusUpdatedAt: checkedAt, errorDetails: undefined } } : item)));
-                        message.info("任务仍在生成");
+                        setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, taskStatus: state.progress?.phase || "generating", videoTaskProgress: state.progress, taskStatusUpdatedAt: checkedAt, errorDetails: undefined } } : item)));
+                        message.info(videoTaskStatusLabel(state.progress));
                         return;
                     }
                     if (state.status === "failed") {
