@@ -10,6 +10,9 @@ import { buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelSc
 import { runModelPlugin } from "./model-plugin";
 import { chargeOrThrow, withCharge } from "@/lib/billing";
 import { saveGeneratedBlob } from "@/services/user-files";
+import { postGeneration } from "./generation-request";
+import { backend } from "./backend";
+import { useAuthStore } from "@/stores/use-auth-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
@@ -41,10 +44,10 @@ type MiniMaxH3Task = {
     error?: { code?: string; message?: string } | null;
 };
 type ApiEnvelope<T> = T | { code?: number | string; data?: T | null; msg?: string; message?: string; error?: { message?: string } };
-type RequestOptions = { signal?: AbortSignal; skipCharge?: boolean; onTaskSubmitted?: (task: VideoGenerationTask) => void };
+type RequestOptions = { requestId?: string; signal?: AbortSignal; skipCharge?: boolean; onTaskSubmitted?: (task: VideoGenerationTask) => void };
 
-export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string };
-export type VideoGenerationTask = { id: string; provider: "openai" | "seedance" | "grok-v2" | "minimax-h3" | "plugin"; model: string };
+export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string; billing?: { channelId: string; taskId: string; ownerId: string | null } };
+export type VideoGenerationTask = { id: string; provider: "openai" | "seedance" | "grok-v2" | "minimax-h3" | "plugin"; model: string; channelId?: string };
 export type VideoGenerationTaskState = { status: "pending"; retryAfterMs?: number } | { status: "completed"; result: VideoGenerationResult } | { status: "failed"; error: string };
 
 /** Results for scripted (plugin) video models, which run their own create+poll in one shot at task creation. */
@@ -63,7 +66,7 @@ function aiHeaders(config: AiConfig, contentType?: string) {
 }
 
 export async function requestVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[] = [], videoReferences: ReferenceVideo[] = [], audioReferences: ReferenceAudio[] = [], options?: RequestOptions): Promise<VideoGenerationResult> {
-    return withCharge("video", modelOptionName(config.model || config.videoModel), async () => {
+    return withCharge("video", config.model || config.videoModel, async () => {
         const task = await createVideoGenerationTask(config, prompt, references, videoReferences, audioReferences, { ...options, skipCharge: true });
         options?.onTaskSubmitted?.(task);
         return waitForVideoGenerationTask(config, task, options);
@@ -87,8 +90,14 @@ export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGe
 }
 
 export async function createVideoGenerationTask(config: AiConfig, prompt: string, references: ReferenceImage[] = [], videoReferences: ReferenceVideo[] = [], audioReferences: ReferenceAudio[] = [], options?: RequestOptions): Promise<VideoGenerationTask> {
+    const channelId = resolveModelRequestConfig(config, config.model || config.videoModel).baseUrl.match(/^\/api\/ai\/([A-Za-z0-9_-]+)/)?.[1];
+    const task = await submitVideoGenerationTask(config, prompt, references, videoReferences, audioReferences, options);
+    return { ...task, channelId };
+}
+
+async function submitVideoGenerationTask(config: AiConfig, prompt: string, references: ReferenceImage[], videoReferences: ReferenceVideo[], audioReferences: ReferenceAudio[], options?: RequestOptions): Promise<VideoGenerationTask> {
     const selectedModel = (config.model || config.videoModel).trim();
-    if (!options?.skipCharge) await chargeOrThrow("video", modelOptionName(selectedModel));
+    if (!options?.skipCharge) await chargeOrThrow("video", selectedModel);
     const requestConfig = resolveModelRequestConfig(config, selectedModel);
     const script = resolveModelScript(config, selectedModel);
     if (script) return createPluginVideoTask(requestConfig, selectedModel, script, prompt, references, options);
@@ -110,15 +119,28 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
 }
 
 export async function pollVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: RequestOptions): Promise<VideoGenerationTaskState> {
+    const channelId = task.channelId || task.model.match(/^(?:srv_)?([^:]+)::/)?.[1];
+    if (channelId) {
+        const ownerId = useAuthStore.getState().currentUserId;
+        const { data } = await axios.get<{ task: { status: string; url?: string; error?: string } }>(`/api/video-tasks/${encodeURIComponent(channelId)}/${encodeURIComponent(task.id)}`, { signal: options?.signal });
+        if (useAuthStore.getState().currentUserId !== ownerId) throw new Error("账号已切换");
+        if (data.task.status === "failed") return { status: "failed", error: data.task.error || "视频生成失败，预扣已退回" };
+        if (data.task.status === "completed" && data.task.url) return { status: "completed", result: { url: data.task.url, billing: { channelId, taskId: task.id, ownerId } } };
+        return { status: "pending", retryAfterMs: 10000 };
+    }
     if (task.provider === "plugin") {
         const result = pluginVideoResults.get(task.id);
         return result ? { status: "completed", result } : { status: "failed", error: "插件视频任务已失效，请重新生成" };
     }
     const requestConfig = resolveModelRequestConfig(config, task.model);
     assertVideoConfig(requestConfig, requestConfig.model);
-    if (task.provider === "grok-v2") return pollGrokVideoTask(requestConfig, task, options);
-    if (task.provider === "minimax-h3") return pollMiniMaxH3Task(requestConfig, task, options);
-    return task.provider === "seedance" ? pollSeedanceTask(requestConfig, task, options) : pollOpenAIVideoTask(requestConfig, task, options);
+    const ownerId = useAuthStore.getState().currentUserId;
+    const state = await (task.provider === "grok-v2" ? pollGrokVideoTask(requestConfig, task, options)
+        : task.provider === "minimax-h3" ? pollMiniMaxH3Task(requestConfig, task, options)
+        : task.provider === "seedance" ? pollSeedanceTask(requestConfig, task, options) : pollOpenAIVideoTask(requestConfig, task, options));
+    const managedChannelId = requestConfig.baseUrl.match(/^\/api\/ai\/([A-Za-z0-9_-]+)/)?.[1];
+    if (state.status === "completed" && managedChannelId) state.result.billing = { channelId: managedChannelId, taskId: task.id, ownerId };
+    return state;
 }
 
 async function createPluginVideoTask(config: AiConfig, model: string, script: string, prompt: string, references: ReferenceImage[], options?: RequestOptions): Promise<VideoGenerationTask> {
@@ -161,6 +183,30 @@ function videoPluginResult(result: unknown): VideoGenerationResult {
 }
 
 export async function storeGeneratedVideo(result: VideoGenerationResult): Promise<UploadedFile> {
+    if (result.billing) {
+        const { channelId, taskId, ownerId } = result.billing;
+        try {
+            if (useAuthStore.getState().currentUserId !== ownerId) throw new Error("账号已切换，已停止取回原视频");
+            let blob = result.blob;
+            if (!blob && result.url) {
+                const url = /^https?:\/\//i.test(result.url) ? `/api/media/proxy?url=${encodeURIComponent(result.url)}` : result.url;
+                blob = (await axios.get<Blob>(url, { responseType: "blob", timeout: 120_000 })).data;
+            }
+            if (!blob) throw new Error("视频尚未取回，预扣额度保留待确认");
+            await assertVideoBlob(blob);
+            if (useAuthStore.getState().currentUserId !== ownerId) throw new Error("账号已切换，已停止取回原视频");
+            const stored = await uploadMediaFile(blob, "video");
+            if (useAuthStore.getState().currentUserId !== ownerId) throw new Error("账号已切换，已停止确认原视频");
+            const { user } = await backend.confirmVideoDelivery(channelId, taskId, blob.size);
+            if (useAuthStore.getState().currentUserId === ownerId) useAuthStore.getState().applyUser(user);
+            return stored;
+        } catch (error) {
+            if (useAuthStore.getState().currentUserId === ownerId) {
+                void backend.reportVideoDeliveryError(channelId, taskId, error instanceof Error ? error.message : "视频取回失败").catch(() => undefined);
+            }
+            throw error;
+        }
+    }
     if (result.blob) saveGeneratedBlob("video", result.blob, "mp4");
     if (result.blob) return uploadMediaFile(result.blob, "video");
     if (result.url) {
@@ -185,7 +231,7 @@ async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: st
     const files = await Promise.all(references.slice(0, 7).map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
     files.forEach((file) => body.append("input_reference[]", file));
     try {
-        const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), signal: options?.signal })).data);
+        const created = unwrapVideoResponse((await postGeneration<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), signal: options?.signal }, options?.requestId)).data);
         if (!created.id) throw new Error("视频接口没有返回任务 ID");
         return { id: created.id, provider: "openai", model };
     } catch (error) {
@@ -244,7 +290,7 @@ async function createSeedanceTask(config: AiConfig, model: string, prompt: strin
         };
 
     try {
-        const created = unwrapSeedanceTask((await axios.post<ApiEnvelope<SeedanceTask>>(seedanceApiUrl(config, undefined, model), payload, { headers: aiHeaders(config, "application/json"), signal: options?.signal })).data);
+        const created = unwrapSeedanceTask((await postGeneration<ApiEnvelope<SeedanceTask>>(seedanceApiUrl(config, undefined, model), payload, { headers: aiHeaders(config, "application/json"), signal: options?.signal }, options?.requestId)).data);
         if (!created.id) throw new Error("Seedance 接口没有返回任务 ID");
         return { id: created.id, provider: "seedance", model };
     } catch (error) {
@@ -257,7 +303,7 @@ async function pollSeedanceTask(config: AiConfig, task: VideoGenerationTask, opt
         const state = unwrapSeedanceTask((await axios.get<ApiEnvelope<SeedanceTask>>(seedanceApiUrl(config, task.id, task.model), { headers: aiHeaders(config), signal: options?.signal })).data);
         const url = videoResultUrl(state);
         if (url) return { status: "completed", result: await videoResultFromUrl(url, options) };
-        if (state.status === "succeeded" || state.status === "completed") return { status: "failed", error: "Seedance 任务成功但没有返回视频 URL" };
+        if (state.status === "succeeded" || state.status === "completed") throw new Error("Seedance 任务成功但视频 URL 尚未取回，预扣额度保留待确认");
         if (state.status === "failed" || state.status === "cancelled" || state.status === "expired") return { status: "failed", error: readApiErrorMessage(state.error?.message) || `Seedance 视频生成${state.status === "expired" ? "超时" : "失败"}` };
         return { status: "pending" };
     } catch (error) {
@@ -311,7 +357,7 @@ async function createGrokVideoTask(config: AiConfig, model: string, prompt: stri
         ...(images.length ? { images } : {}),
     };
     try {
-        const response = (await axios.post<GrokVideoTask>(grokVideoApiUrl(config), payload, { headers: aiHeaders(config, "application/json"), signal: options?.signal })).data;
+        const response = (await postGeneration<GrokVideoTask>(grokVideoApiUrl(config), payload, { headers: aiHeaders(config, "application/json"), signal: options?.signal }, options?.requestId)).data;
         if (!response?.task_id) throw new Error("Grok Video V2 接口没有返回 task_id");
         return { id: response.task_id, provider: "grok-v2", model };
     } catch (error) {
@@ -326,7 +372,7 @@ async function pollGrokVideoTask(config: AiConfig, task: VideoGenerationTask, op
         const result = response?.data || response;
         const url = videoResultUrl(result);
         if (status === "SUCCESS" || url) {
-            if (!url) return { status: "failed", error: "Grok Video V2 任务成功但没有返回视频 URL" };
+            if (!url) throw new Error("Grok Video V2 任务成功但视频 URL 尚未取回，预扣额度保留待确认");
             return { status: "completed", result: await videoResultFromUrl(url, options) };
         }
         if (status === "FAILURE") return { status: "failed", error: response.fail_reason || "Grok Video V2 生成失败" };
@@ -351,7 +397,7 @@ async function createMiniMaxH3Task(config: AiConfig, model: string, prompt: stri
     for (const audio of audioReferences) content.push({ type: "audio_url", audio_url: { url: await resolveMiniMaxH3MediaUrl(audio, "音频") }, role: "reference_audio" });
     const ratio = references.length && !hasMultimodalReferences ? "adaptive" : normalizeMiniMaxH3Ratio(config.size);
     try {
-        const response = await axios.post<{ task_id?: string }>(
+        const response = await postGeneration<{ task_id?: string }>(
             miniMaxH3ApiUrl(config),
             {
                 model: modelOptionName(model),
@@ -362,6 +408,7 @@ async function createMiniMaxH3Task(config: AiConfig, model: string, prompt: stri
                 aigc_watermark: boolConfig(config.videoWatermark, false),
             },
             { headers: aiHeaders(config, "application/json"), signal: options?.signal },
+            options?.requestId,
         );
         if (!response.data?.task_id) throw new Error("MiniMax H3 接口没有返回 task_id");
         return { id: response.data.task_id, provider: "minimax-h3", model };
@@ -376,7 +423,10 @@ async function pollMiniMaxH3Task(config: AiConfig, task: VideoGenerationTask, op
         const state = response.data?.task;
         if (!state) throw new Error("MiniMax H3 接口没有返回任务");
         const url = videoResultUrl(state);
-        if (state.status === "succeeded") return url ? { status: "completed", result: await videoResultFromUrl(url, options) } : { status: "failed", error: "MiniMax H3 任务成功但没有返回视频 URL" };
+        if (state.status === "succeeded") {
+            if (!url) throw new Error("MiniMax H3 任务成功但视频 URL 尚未取回，预扣额度保留待确认");
+            return { status: "completed", result: await videoResultFromUrl(url, options) };
+        }
         if (state.status === "failed" || state.status === "cancelled") return { status: "failed", error: state.error?.message || "MiniMax H3 视频生成失败" };
         return { status: "pending" };
     } catch (error) {
@@ -405,7 +455,7 @@ async function createCompatibleGrokVideoTask(config: AiConfig, model: string, pr
         const images = await Promise.all(references.slice(0, 7).map((image) => imageToDataUrl(image)));
         const created = unwrapVideoResponse(
             (
-                await axios.post<ApiVideoResponse>(
+                await postGeneration<ApiVideoResponse>(
                     aiApiUrl(config, "/videos"),
                     {
                         duration: Number(normalizeVideoSeconds(config.videoSeconds)),
@@ -416,6 +466,7 @@ async function createCompatibleGrokVideoTask(config: AiConfig, model: string, pr
                         resolution: normalizeVideoResolution(config.vquality).toUpperCase(),
                     },
                     { headers: aiHeaders(config, "application/json"), signal: options?.signal },
+                    options?.requestId,
                 )
             ).data,
         );
@@ -640,16 +691,19 @@ function statusMessage(status: number | undefined, fallback: string) {
 }
 
 async function assertVideoBlob(blob: Blob) {
+    if (!blob.size) throw new Error("取回的视频文件为空，预扣额度保留待确认");
+    if (blob.type.startsWith("text/")) throw new Error("取回的是错误页面，预扣额度保留待确认");
     if (!blob.type.includes("json")) return;
     let payload: { code?: number; msg?: string; message?: string; error?: { message?: string } | string };
     try {
         payload = JSON.parse(await blob.text()) as { code?: number; msg?: string; message?: string; error?: { message?: string } | string };
     } catch {
-        return;
+        throw new Error("视频下载返回了无效的 JSON，预扣额度保留待确认");
     }
     const detail = readApiErrorMessage(payload);
     if (typeof payload.code === "number" && payload.code !== 0) throw new Error(detail || "视频下载失败");
     if (detail) throw new Error(detail);
+    throw new Error("视频下载返回了 JSON 而非视频文件，预扣额度保留待确认");
 }
 
 function isPublicMediaUrl(value: string) {

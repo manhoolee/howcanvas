@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { createCreditAccounting } from "./credit-accounting.mjs";
+import { createChannelHistory } from "./channel-history.mjs";
 import { DatabaseSync } from "node:sqlite";
 
 export function legacyDocumentIsNewer(legacyUpdatedAt, currentUpdatedAt) {
@@ -14,7 +16,7 @@ export function createServerDatabase(file) {
     const db = new DatabaseSync(file);
     db.exec(`
         PRAGMA journal_mode = WAL;
-        PRAGMA synchronous = NORMAL;
+        PRAGMA synchronous = FULL;
         PRAGMA foreign_keys = ON;
         PRAGMA busy_timeout = 5000;
 
@@ -46,6 +48,38 @@ export function createServerDatabase(file) {
             payload_json TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS image_tasks_user_status_idx ON image_tasks(user_id, status, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS generation_requests (
+            user_id TEXT NOT NULL,
+            request_id TEXT NOT NULL,
+            fingerprint TEXT NOT NULL,
+            response_json TEXT,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, request_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS billing_ledger (
+            receipt_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            model TEXT NOT NULL,
+            channel_id TEXT NOT NULL DEFAULT '',
+            task_id TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL,
+            payload_json TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS billing_ledger_user_time_idx ON billing_ledger(user_id, created_at DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS billing_ledger_confirmed_task_idx ON billing_ledger(user_id, channel_id, kind, task_id) WHERE status = 'completed' AND task_id != '';
+        CREATE UNIQUE INDEX IF NOT EXISTS billing_ledger_confirmed_generation_idx ON billing_ledger(json_extract(payload_json, '$.generationTaskId')) WHERE status = 'completed' AND json_extract(payload_json, '$.generationTaskId') IS NOT NULL;
+        CREATE TABLE IF NOT EXISTS billing_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            receipt_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            payload_json TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS billing_events_receipt_idx ON billing_events(receipt_id, event_id);
 
         CREATE TABLE IF NOT EXISTS media_assets (
             user_id TEXT NOT NULL,
@@ -79,6 +113,17 @@ export function createServerDatabase(file) {
     `);
 
     const statements = {
+        billingReceipt: db.prepare("SELECT payload_json FROM billing_ledger WHERE receipt_id = ? AND user_id = ?"),
+        videoReceipt: db.prepare("SELECT payload_json FROM billing_ledger WHERE user_id = ? AND channel_id = ? AND kind = 'video' AND task_id = ? ORDER BY created_at LIMIT 1"),
+        upsertBilling: db.prepare(`INSERT INTO billing_ledger (receipt_id, user_id, created_at, kind, model, channel_id, task_id, status, payload_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(receipt_id) DO UPDATE SET task_id = excluded.task_id, status = excluded.status, payload_json = excluded.payload_json`),
+        insertBillingEvent: db.prepare("INSERT INTO billing_events (receipt_id, event_type, created_at, payload_json) VALUES (?, ?, ?, ?)"),
+        billingEvents: db.prepare("SELECT event_id, event_type, created_at, payload_json FROM billing_events WHERE receipt_id = ? ORDER BY event_id"),
+        generationRequest: db.prepare("SELECT fingerprint, response_json FROM generation_requests WHERE user_id = ? AND request_id = ?"),
+        reserveGeneration: db.prepare("INSERT OR IGNORE INTO generation_requests (user_id, request_id, fingerprint, created_at) VALUES (?, ?, ?, ?)"),
+        completeGeneration: db.prepare("UPDATE generation_requests SET response_json = ? WHERE user_id = ? AND request_id = ?"),
+        deleteGenerationRequests: db.prepare("DELETE FROM generation_requests WHERE user_id = ?"),
         session: db.prepare("SELECT * FROM account_sessions WHERE user_id = ?"),
         upsertSession: db.prepare(`
             INSERT INTO account_sessions (user_id, active_session_id, session_version, last_login_at, last_login_ip, last_user_agent, last_seen_at)
@@ -169,8 +214,46 @@ export function createServerDatabase(file) {
         return Number(result.lastInsertRowid || 0);
     }
 
+    const accounting = createCreditAccounting(db, transaction);
+    const channelHistory = createChannelHistory(db, transaction, file);
     return {
         file,
+        ...accounting,
+        ...channelHistory,
+        recordBilling(receipt, eventType) {
+            return accounting.updateBilling(receipt, eventType);
+        },
+        getBillingReceipt(userId, receiptId) {
+            const row = statements.billingReceipt.get(receiptId, userId);
+            return row ? JSON.parse(row.payload_json) : null;
+        },
+        findVideoReceipt(userId, channelId, taskId) {
+            const row = statements.videoReceipt.get(userId, channelId, taskId);
+            return row ? JSON.parse(row.payload_json) : null;
+        },
+        listBilling({ userId = "", taskId = "", kind = "", status = "", model = "", from = "", to = "", offset = 0, limit = 50 } = {}) {
+            const where = []; const params = [];
+            for (const [column, value] of [["user_id", userId], ["task_id", taskId], ["kind", kind], ["status", status], ["model", model]]) {
+                if (value) { where.push(`${column} = ?`); params.push(value); }
+            }
+            if (from) { where.push("created_at >= ?"); params.push(from); }
+            if (to) { where.push("created_at < ?"); params.push(to); }
+            const filter = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+            const total = db.prepare(`SELECT COUNT(*) AS total FROM billing_ledger${filter}`).get(...params).total;
+            const rows = db.prepare(`SELECT payload_json FROM billing_ledger${filter} ORDER BY created_at DESC, receipt_id LIMIT ? OFFSET ?`).all(...params, limit, offset);
+            return { total, items: rows.map((row) => JSON.parse(row.payload_json)) };
+        },
+        billingEvents(receiptId) {
+            return statements.billingEvents.all(receiptId).map((row) => ({ id: row.event_id, event: row.event_type, createdAt: row.created_at, receipt: JSON.parse(row.payload_json) }));
+        },
+        reserveGeneration(userId, requestId, fingerprint) {
+            const inserted = statements.reserveGeneration.run(userId, requestId, fingerprint, new Date().toISOString()).changes;
+            return inserted ? null : statements.generationRequest.get(userId, requestId);
+        },
+        generationRequest(userId, requestId) { return statements.generationRequest.get(userId, requestId) || null; },
+        completeGeneration(userId, requestId, response) {
+            statements.completeGeneration.run(JSON.stringify(response), userId, requestId);
+        },
         getSession(userId) {
             return statements.session.get(userId) || null;
         },
@@ -282,6 +365,7 @@ export function createServerDatabase(file) {
                 statements.deleteSessions.run(userId);
                 statements.deleteDocuments.run(userId);
                 statements.deleteTasks.run(userId);
+                statements.deleteGenerationRequests.run(userId);
                 statements.deleteMediaAssets.run(userId);
                 statements.deleteEvents.run(userId);
             });

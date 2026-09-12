@@ -7,6 +7,7 @@ import { RequireAdmin, RequireAuth, RequirePermission } from "@/components/auth/
 import UserLayout from "@/layouts/user-layout";
 
 const AccountPage = lazy(() => import("@/pages/account"));
+const AccountBillingPage = lazy(() => import("@/pages/account/billing"));
 const AdminPage = lazy(() => import("@/pages/admin"));
 const AssetsPage = lazy(() => import("@/pages/assets"));
 const AuthPage = lazy(() => import("@/pages/auth"));
@@ -50,6 +51,7 @@ export const router = createBrowserRouter([
             { path: "/canvas/:id", element: <RequirePermission perm="canvas"><CanvasProjectPage /></RequirePermission> },
             { path: "/config", element: <RequireAdmin><ConfigPage /></RequireAdmin> },
             { path: "/account", element: <AccountPage /> },
+            { path: "/account/billing", element: <AccountBillingPage /> },
             { path: "/admin", element: <RequireAdmin><AdminPage /></RequireAdmin> },
         ],
     },

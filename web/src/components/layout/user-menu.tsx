@@ -34,6 +34,7 @@ export function UserMenu() {
         },
         { type: "divider" },
         { key: "account", icon: <UserIcon className="size-4" />, label: "我的账号" },
+        { key: "billing", icon: <Coins className="size-4" />, label: "积分明细" },
         ...(isAdmin ? [{ key: "admin", icon: <LayoutDashboard className="size-4" />, label: "管理后台" }] : []),
         { type: "divider" },
         { key: "switch", icon: <RefreshCw className="size-4" />, label: "更换账号" },
@@ -42,6 +43,7 @@ export function UserMenu() {
 
     const onClick: MenuProps["onClick"] = async ({ key }) => {
         if (key === "account") navigate("/account");
+        else if (key === "billing") navigate("/account/billing");
         else if (key === "admin") navigate("/admin");
         else if (key === "switch" || key === "logout") {
             await logout();

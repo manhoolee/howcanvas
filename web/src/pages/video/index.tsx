@@ -6,6 +6,7 @@ import { saveAs } from "file-saver";
 
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { ModelPicker } from "@/components/model-picker";
+import { VideoPriceSummary } from "@/components/video-price-summary";
 import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { VideoSettingsPanel, normalizeVideoResolutionValue, normalizeVideoSizeValue, videoSizeLabel } from "@/components/video-settings-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -272,6 +273,11 @@ export default function VideoPage() {
     };
 
     const retryResult = () => {
+        const log = previewLog || logs.find((item) => item.id === results[0]?.id);
+        if (log?.task && log.status !== "失败") {
+            void pollGenerationLog(log);
+            return;
+        }
         void generate();
     };
 
@@ -370,6 +376,7 @@ export default function VideoPage() {
         setStartedAt((value) => value || performance.now());
         setResults((value) => (value.length ? value : [{ id: log.id, status: "pending" }]));
         const taskConfig = buildVideoConfig({ ...effectiveConfig, ...log.config }, log.task.model || log.model);
+        let terminalFailure = false;
         try {
             for (let attempt = 0; attempt < 120; attempt += 1) {
                 if (!isCurrentGeneration()) return;
@@ -381,7 +388,7 @@ export default function VideoPage() {
                         id: nanoid(),
                         url: stored.url,
                         storageKey: stored.storageKey,
-                        durationMs: Date.now() - log.createdAt,
+                        durationMs: stored.durationMs || 0,
                         width: stored.width || 1280,
                         height: stored.height || 720,
                         bytes: stored.bytes,
@@ -389,20 +396,22 @@ export default function VideoPage() {
                     };
                     setResults([{ id: nextVideo.id, status: "success", video: nextVideo }]);
                     if (agentTaskId) updateAgentTask(agentTaskId, { status: "succeeded", successCount: 1, failCount: 0, error: undefined });
-                    await saveLog({ ...log, status: "成功", durationMs: nextVideo.durationMs, video: nextVideo, error: undefined });
+                    await saveLog({ ...log, status: "成功", durationMs: Date.now() - log.createdAt, video: nextVideo, error: undefined });
                     message.success("视频已生成");
                     return;
                 }
-                if (state.status === "failed") throw new Error(state.error);
-                if (attempt === 119) throw new Error("视频生成超时，请稍后重试");
-                await delay(log.task.provider === "seedance" ? 5000 : 2500);
+                if (state.status === "failed") { terminalFailure = true; throw new Error(state.error); }
+                if (attempt === 119) throw new Error("视频结果待确认，请稍后取回原任务");
+                await delay(Math.max(state.retryAfterMs || 0, log.task.provider === "minimax-h3" ? 20_000 : log.task.provider === "seedance" ? 5000 : 2500));
             }
         } catch (error) {
             if (!isCurrentGeneration()) return;
             const errorMessage = error instanceof Error ? error.message : "生成失败";
             setResults([{ id: log.id, status: "failed", error: errorMessage }]);
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: errorMessage });
-            await saveLog({ ...log, status: "失败", durationMs: Date.now() - log.createdAt, error: errorMessage });
+            const nextLog: GenerationLog = { ...log, status: terminalFailure ? "失败" : "生成中", durationMs: Date.now() - log.createdAt, error: errorMessage };
+            setPreviewLog(nextLog);
+            await saveLog(nextLog, false);
             message.error(errorMessage);
         } finally {
             activeLogIdsRef.current.delete(log.id);
@@ -556,6 +565,7 @@ export default function VideoPage() {
                         </div>
 
                         <div className="mt-auto pt-6">
+                            <div className="mb-2"><VideoPriceSummary config={{ ...effectiveConfig, model }} /></div>
                             <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} loading={running} disabled={!canGenerate || running} onClick={() => void generate()}>
                                 开始生成
                             </Button>

@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 RUN apt-get -o Acquire::ForceIPv4=true update \
-    && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates \
+    && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 COPY server/requirements-grok.txt ./
 ARG PIP_INDEX_URL=https://pypi.org/simple

@@ -15,6 +15,9 @@ import { isArkSeedreamChannel, mergeSeedreamResults, prepareSeedreamRequest, see
 import { createTaskQueue } from "./task-queue.mjs";
 import { prepareImageDeliveryRequest } from "./image-delivery-routing.mjs";
 import { createAiDispatcher } from "./ai-transport.mjs";
+import { isVideoCreation, reserveGenerationRequest, replayGenerationRequest, videoTaskId, videoOutcome, videoBillingQuantity } from "./generation-billing.mjs";
+import { creditUnits, durationCost } from "./credit-accounting.mjs";
+import { createVideoDelivery, videoQueryUrl } from "./video-delivery.mjs";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(serverDir, ".env") });
@@ -35,6 +38,7 @@ const PUBLIC_ASSETS_FILE = path.join(DATA_DIR, "public-assets.json");
 const CANVAS_DIR = path.join(DATA_DIR, "canvas");
 const WORKBENCH_DIR = path.join(DATA_DIR, "workbench");
 const IMAGE_TASKS_DIR = path.join(DATA_DIR, "image-tasks");
+const VIDEO_TASKS_DIR = path.join(DATA_DIR, "video-tasks");
 const DATABASE_FILE = path.join(DATA_DIR, "server.sqlite");
 
 const ALL_PERMISSIONS = ["canvas", "image", "video", "prompts", "assets", "agent"];
@@ -163,7 +167,8 @@ async function measureUserStorageBytes(user) {
     const canvasFiles = path.join(CANVAS_DIR, `${safeUserId}-files`);
     const workbenchFiles = path.join(WORKBENCH_DIR, safeUserId, "files");
     const taskFiles = path.join(IMAGE_TASKS_DIR, safeUserId, "files");
-    const sizes = await Promise.all([usernameDir, canvasFiles, workbenchFiles, taskFiles].map(directorySize));
+    const videoFiles = path.join(VIDEO_TASKS_DIR, safeUserId);
+    const sizes = await Promise.all([usernameDir, canvasFiles, workbenchFiles, taskFiles, videoFiles].map(directorySize));
     return sizes.reduce((total, size) => total + size, 0);
 }
 async function reserveUserStorage(user, incomingBytes, replacedBytes = 0) {
@@ -212,6 +217,7 @@ function deletePrivateUserData(user) {
         path.join(CANVAS_DIR, `${String(user.id).replace(/[^a-zA-Z0-9_-]/g, "_")}-files`),
         path.join(WORKBENCH_DIR, String(user.id).replace(/[^a-zA-Z0-9_-]/g, "_")),
         path.join(IMAGE_TASKS_DIR, String(user.id).replace(/[^a-zA-Z0-9_-]/g, "_")),
+        path.join(VIDEO_TASKS_DIR, String(user.id).replace(/[^a-zA-Z0-9_-]/g, "_")),
     ];
     for (const target of targets) fs.rmSync(target, { recursive: true, force: true });
     userStorageUsage.delete(safeUserId(user));
@@ -290,6 +296,8 @@ let settings = loadJson(SETTINGS_FILE, null) || {
     },
 };
 if (!settings.modelPricing || typeof settings.modelPricing !== "object") settings.modelPricing = {};
+if (!settings.modelVideoPricingUnits || typeof settings.modelVideoPricingUnits !== "object") settings.modelVideoPricingUnits = {};
+if (settings.videoPricingUnit !== "second") settings.videoPricingUnit = "task";
 if (!settings.defaultModels || typeof settings.defaultModels !== "object") {
     settings.defaultModels = { image: "", video: "", audio: "", text: "" };
 }
@@ -403,8 +411,9 @@ function zeroUsage() {
     return { image: 0, video: 0, audio: 0, text: 0, creditsSpent: 0 };
 }
 function publicUser(u) {
+    database.initializeCredits(u);
     const { passwordHash, salt, billingCharges, tokenVersion, ...rest } = u;
-    return rest;
+    return { ...rest, ...database.creditAccount(u.id) };
 }
 function findUser(id) {
     return users.find((u) => u.id === id);
@@ -496,7 +505,17 @@ function saveCanvas(userId, projects) {
 })();
 
 // ---------- 应用 ----------
+for (const user of users) database.initializeCredits(user);
+for (const channel of aiChannels) database.registerChannelRevision(channel);
 const app = express();
+const videoDelivery = createVideoDelivery({
+    database, directory: VIDEO_TASKS_DIR, findUser, readLimited: readBodyLimited,
+    assertSafeUrl: assertSafeImageUrl, reserveStorage: reserveUserStorage, writeAtomic: writeFileAtomic, maximumBytes: MAX_AI_RESPONSE_BYTES,
+    fetchProvider: (url, channel) => {
+        const options = { method: "GET", headers: { Authorization: `Bearer ${channel.apiKey}`, Accept: "application/json" }, redirect: "error", dispatcher: aiDispatcher, signal: AbortSignal.timeout(AI_UPSTREAM_TIMEOUT_MS) };
+        return channel.apiFormat === "grok-video-v2" ? requestWithGrokAiohttp(url, options) : fetch(url, options);
+    },
+});
 const sessionStreams = new Map();
 
 function publishUserEvent(userId, eventName, payload) {
@@ -727,42 +746,35 @@ async function requestModel(req, forwardPath) {
     return headerModel;
 }
 
-function beginProxyCharge(user, capability, model) {
+function billingReceipt(user, receiptId) {
+    return database.getBillingReceipt(user.id, receiptId);
+}
+
+function findVideoReceipt(user, channelId, taskId) {
+    const stored = database.findVideoReceipt(user.id, channelId, taskId);
+    return stored ? billingReceipt(user, stored.id) : null;
+}
+
+function beginProxyCharge(user, capability, model, details = {}) {
+    database.initializeCredits(user);
     const modelPrice = Number.isFinite(Number(settings.modelPricing[model])) ? Number(settings.modelPricing[model]) : null;
-    const unitPrice = modelPrice !== null ? modelPrice : Number(settings.pricing[capability]) || 0;
-    const cost = user.role === "admin" ? 0 : Math.max(0, unitPrice);
-    if (user.role !== "admin" && user.credits < cost) {
-        const error = new Error(`额度不足：本次生成需要 ${cost} 点，当前余额 ${user.credits} 点`);
-        error.statusCode = 402;
-        throw error;
-    }
-    user.credits = Math.max(0, user.credits - cost);
-    user.usage ||= zeroUsage();
-    user.usage[capability] = Number(user.usage[capability] || 0) + 1;
-    user.usage.creditsSpent = Number(user.usage.creditsSpent || 0) + cost;
-    user.billingCharges ||= [];
-    const receipt = { id: crypto.randomUUID(), kind: capability, model, cost, refunded: false, source: "proxy", status: "pending", createdAt: new Date().toISOString() };
-    user.billingCharges.push(receipt);
-    user.billingCharges = user.billingCharges.slice(-200);
-    persistUsers();
-    return receipt;
+    const unitPrice = details.unitPrice ?? (modelPrice !== null ? modelPrice : Number(settings.pricing[capability]) || 0);
+    const quantity = details.quantity ?? 1;
+    const standardCost = durationCost(unitPrice, quantity * 1000);
+    const cost = user.role === "admin" ? 0 : standardCost;
+    const pricingVersionId = crypto.createHash("sha256").update(JSON.stringify({ model, unitPrice, unit: details.pricingUnit || "task", calculation: "measured-ms-half-up-v1" })).digest("hex");
+    const receipt = { id: crypto.randomUUID(), generationTaskId: crypto.randomUUID(), userId: user.id, taskId: capability === "video" ? "" : crypto.randomUUID(), kind: capability, model, unitPrice, pricingVersionId, pricingUnit: "task", quantity, cost, standardCost, exempt: user.role === "admin", source: "proxy", createdAt: new Date().toISOString(), ...details };
+    return database.reserveCredit(receipt);
 }
 
 function rollbackProxyCharge(user, receipt) {
     if (!receipt || receipt.refunded) return;
-    user.credits += receipt.cost;
-    user.usage[receipt.kind] = Math.max(0, Number(user.usage[receipt.kind] || 0) - 1);
-    user.usage.creditsSpent = Math.max(0, Number(user.usage.creditsSpent || 0) - receipt.cost);
-    receipt.refunded = true;
-    receipt.status = "failed";
-    receipt.refundedAt = new Date().toISOString();
-    persistUsers();
+    Object.assign(receipt, database.releaseCredit(receipt.id, { reason: receipt.lastError || "生成失败", externalTerminal: true }));
 }
 
 function completeProxyCharge(receipt) {
-    if (!receipt) return;
-    receipt.status = "completed";
-    persistUsers();
+    if (!receipt || receipt.refunded || receipt.status === "completed") return;
+    Object.assign(receipt, database.settleCredit(receipt.id, receipt.cost));
 }
 
 async function readBodyLimited(body, maximum, onFirstChunk) {
@@ -971,7 +983,7 @@ function imageTaskUpstream(channel, action) {
 }
 
 function imageTaskReceipt(user, receiptId) {
-    return Array.isArray(user?.billingCharges) ? user.billingCharges.find((item) => item.id === receiptId) : null;
+    return user ? billingReceipt(user, receiptId) : null;
 }
 
 async function runImageTask(userId, taskId) {
@@ -1109,7 +1121,7 @@ function createQueuedImageTask(req, { channel, action, model, routeKind }) {
     const paths = imageTaskPaths(task.userId, task.id);
     let receipt;
     try {
-        receipt = beginProxyCharge(req.user, "image", model);
+        receipt = beginProxyCharge(req.user, "image", model, { taskId: task.id, channelId: channel.id });
         task.receiptId = receipt?.id || "";
         writeFileAtomic(paths.request, req.body);
         saveImageTask(task, "task.queued");
@@ -1177,6 +1189,8 @@ app.post("/api/image-tasks/:channelId/:action", (req, _res, next) => {
     if (!canUseCapability(req.user, "image")) return res.status(403).json({ error: "当前账户没有使用图片模型的权限" });
     if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: "图片任务请求体为空" });
 
+    if (!await reserveGenerationRequest(database, req, res, `image:${channel.id}:${action}:${model}`)) return;
+
     let task;
     try {
         task = createQueuedImageTask(req, { channel, action, model, routeKind: isArkSeedreamChannel(channel, model) ? "seedream" : "image" });
@@ -1198,6 +1212,8 @@ app.post("/api/seedream-tasks/:channelId/:action", auth, rateLimit({ max: 60, na
     if (!modelConfig || modelConfig.capability !== "image" || !isArkSeedreamChannel(channel, model)) return res.status(403).json({ error: "该渠道或模型不是火山 Ark Seedream" });
     if (!canUseCapability(req.user, "image")) return res.status(403).json({ error: "当前账户没有使用图片模型的权限" });
     if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: "Seedream 任务请求体为空" });
+
+    if (!await reserveGenerationRequest(database, req, res, `image:${channel.id}:${action}:${model}`)) return;
 
     let task;
     try {
@@ -1283,6 +1299,12 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
     let forwardPath = req.url;
     let channel = null;
     const match = forwardPath.match(/^\/([A-Za-z0-9_-]+)(\/.*)$/);
+    if (match && isVideoCreation(req.method, match[2]) && req.headers["idempotency-key"]) {
+        try {
+            const originalModel = await requestModel(req, match[2]);
+            if (await replayGenerationRequest(database, req, res, `video:${match[1]}:${originalModel}:${new URL(match[2], "http://local").pathname}`)) return;
+        } catch (error) { return res.status(400).json({ error: error.message }); }
+    }
     if (match) {
         const found = aiChannels.find((c) => c.id === match[1]);
         if (found) {
@@ -1292,18 +1314,53 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
     }
     if (!channel && /^\/v1(?:beta)?\//i.test(forwardPath)) channel = aiChannels[0] || null;
     if (!channel) return res.status(404).json({ error: "AI 渠道不存在" });
+    const originalTaskId = req.method === "GET" ? videoTaskId(forwardPath) : "";
+    const originalReceipt = originalTaskId ? findVideoReceipt(req.user, channel.id, originalTaskId) : null;
+    if (originalTaskId) {
+        if (!originalReceipt) return res.status(404).json({ error: "视频任务不存在" });
+        if (!originalReceipt.channelRevisionId) return res.status(409).json({ error: "旧任务渠道信息待管理员核实" });
+        try { channel = database.resolveChannelRevision(originalReceipt.channelRevisionId); }
+        catch (error) { return res.status(503).json({ error: error.message }); }
+    }
     if (!channel || !channel.baseUrl || !channel.apiKey) {
         return res.status(503).json({ error: "服务器未配置 AI 渠道，请管理员在「管理后台 → 渠道与模型」中添加" });
     }
 
+    channel = structuredClone(channel);
+    const channelRevision = database.currentChannelRevision(channel.id);
+    if (!originalReceipt && channelRevision) {
+        try { channel = database.resolveChannelRevision(channelRevision.id); }
+        catch (error) { return res.status(503).json({ error: error.message }); }
+    }
     let model;
     try { model = await requestModel(req, forwardPath); }
     catch (error) { return res.status(400).json({ error: error.message || "AI 请求模型无效" }); }
     const modelConfig = channel.models.find((item) => item.name === model);
     if (!modelConfig) return res.status(403).json({ error: "AI 模型未在服务器渠道中授权" });
-    if (!canUseCapability(req.user, modelConfig.capability)) return res.status(403).json({ error: "当前账户没有使用该模型能力的权限" });
+    if (!originalReceipt && !canUseCapability(req.user, modelConfig.capability)) return res.status(403).json({ error: "当前账户没有使用该模型能力的权限" });
     if (!aiPathAllowed(forwardPath, modelConfig.capability, req.method)) return res.status(403).json({ error: "该 AI 接口路径不在服务器允许列表中" });
     if (!channelProtocolAllowsPath(channel, forwardPath, modelConfig.capability)) return res.status(403).json({ error: "当前渠道协议不允许该视频接口路径" });
+
+    const isVideo = modelConfig.capability === "video";
+    const creatingVideo = isVideo && isVideoCreation(req.method, forwardPath);
+    if (!originalReceipt && channelRevision?.archived) return res.status(409).json({ error: "渠道已停止接收新任务" });
+    const pricingUnit = isVideo && Number.isFinite(Number(settings.modelPricing[model])) ? settings.modelVideoPricingUnits[model] || "task" : settings.videoPricingUnit;
+    const unitPrice = Number.isFinite(Number(settings.modelPricing[model])) ? Number(settings.modelPricing[model]) : Number(settings.pricing[modelConfig.capability]) || 0;
+    let videoQuantity = 1;
+    if (creatingVideo) {
+        if (!req.headers["idempotency-key"]) return res.status(400).json({ error: "视频生成必须提供请求标识，请刷新后重试" });
+        try { videoQuantity = await videoBillingQuantity(req, pricingUnit, channel); }
+        catch (error) { return res.status(400).json({ error: error.message || "视频计费时长无效" }); }
+    }
+    const polledTaskId = isVideo && !creatingVideo ? videoTaskId(forwardPath) : "";
+    const videoReceipt = polledTaskId ? findVideoReceipt(req.user, channel.id, polledTaskId) : null;
+    if (videoReceipt && videoReceipt.model !== model) return res.status(403).json({ error: "视频任务模型不匹配" });
+    if (videoReceipt?.refunded) return res.status(409).json({ error: "此视频任务已退款，不能再次确认扣费或取回" });
+    if (creatingVideo && !await reserveGenerationRequest(database, req, res, `video:${channel.id}:${model}:${new URL(forwardPath, "http://local").pathname}`)) return;
+    if (creatingVideo && pricingUnit === "second") {
+        const quote = verify(String(req.headers["x-billing-quote"] || ""));
+        if (!quote || quote.purpose !== "video-quote" || quote.userId !== req.user.id || quote.channelRevisionId !== channelRevision.id || quote.model !== model || quote.unitPrice !== unitPrice || quote.pricingUnit !== pricingUnit) return res.status(409).json({ code: "QUOTE_CHANGED", error: "报价已变化或过期，请刷新价格后重新生成" });
+    }
 
     const base = channel.baseUrl.trim().replace(/\/+$/, "");
     const legacySeedancePath = base.toLowerCase().includes("api.seedance.nz") && /^\/v1\/contents\/generations\/tasks(?:\/|$)/i.test(forwardPath);
@@ -1360,11 +1417,15 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
     let receipt;
     const clientAbortController = new AbortController();
     const abortForDisconnectedClient = () => {
-        if (!res.writableEnded) clientAbortController.abort(new Error("AI 客户端已断开"));
+        if (!creatingVideo && !res.writableEnded) clientAbortController.abort(new Error("AI 客户端已断开"));
     };
     res.once("close", abortForDisconnectedClient);
     try {
-        receipt = beginProxyCharge(req.user, modelConfig.capability, model);
+        if (!isVideo || creatingVideo) receipt = beginProxyCharge(req.user, modelConfig.capability, model, creatingVideo ? {
+            videoBilling: true, channelId: channel.id, channelRevisionId: channelRevision.id, providerNamespaceId: channelRevision.namespace,
+            submissionUrl: url, pricingUnit, unitPrice, quantity: videoQuantity, reservedDurationMs: pricingUnit === "second" ? 15000 : undefined,
+            requestedSeconds: req.videoRequestedSeconds, requestId: String(req.headers["idempotency-key"] || ""), upstreamState: "pending",
+        } : { unitPrice });
         const requestOptions = {
             method: req.method,
             headers,
@@ -1378,13 +1439,25 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
         const contentType = upstream.headers.get("content-type");
         if (!upstream.ok) {
             const body = upstream.body ? await readBodyLimited(upstream.body, Math.min(MAX_AI_RESPONSE_BYTES, 1024 * 1024)) : Buffer.alloc(0);
-            rollbackProxyCharge(req.user, receipt);
+            // A timeout or provider 5xx cannot establish whether a video was created.
+            if (!isVideo || [400, 401, 403, 422].includes(upstream.status)) rollbackProxyCharge(req.user, receipt);
+            if (isVideo && receipt && !receipt.refunded) {
+                receipt.upstreamState = "unknown";
+                receipt.lastError = `HTTP ${upstream.status}`;
+                persistUsers();
+                database.recordBilling(receipt, "outcome-unknown");
+            }
+            if (videoReceipt?.status === "pending") {
+                videoReceipt.lastError = `查询失败：HTTP ${upstream.status}`;
+                persistUsers();
+                database.recordBilling(videoReceipt, "query-failed");
+            }
             const summary = body.toString("utf8").replace(/[\r\n\t]+/g, " ").slice(0, 500);
             console.warn(`[ai] upstream ${upstream.status} ${req.method} ${forwardPath}: ${summary}`);
             if (contentType) res.setHeader("Content-Type", contentType);
             return res.status(upstream.status).end(body);
         }
-        completeProxyCharge(receipt);
+        if (!isVideo) completeProxyCharge(receipt);
         res.status(upstream.status);
         if (contentType) res.setHeader("Content-Type", contentType);
         if (!upstream.body) return res.end();
@@ -1402,10 +1475,39 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
         } else {
             // 图片/视频等非流式响应先完整读取，避免上游断流时向浏览器发送半截 200。
             const body = await readBodyLimited(upstream.body, MAX_AI_RESPONSE_BYTES);
+            const activeReceipt = receipt || videoReceipt;
+            if (isVideo && activeReceipt?.status === "pending") {
+                const previousState = activeReceipt.upstreamState;
+                const outcome = videoOutcome(body);
+                if (creatingVideo && outcome.taskId) {
+                    if (!database.associateProviderTask(activeReceipt.id, activeReceipt.providerNamespaceId, outcome.taskId)) {
+                        activeReceipt.lastError = "渠道返回已关联的任务ID，重复预扣退回，需核实渠道";
+                        rollbackProxyCharge(req.user, activeReceipt);
+                    } else activeReceipt.taskId = outcome.taskId;
+                }
+                activeReceipt.lastCheckedAt = new Date().toISOString();
+                if (outcome.reason) activeReceipt.lastError = outcome.reason;
+                if (outcome.providerReportedSeconds) activeReceipt.providerReportedSeconds = outcome.providerReportedSeconds;
+                if (!forwardPath.endsWith("/content")) activeReceipt.upstreamState = outcome.state;
+                if (outcome.state === "failed") rollbackProxyCharge(req.user, activeReceipt);
+                else persistUsers();
+                if (!activeReceipt.refunded) database.recordBilling(activeReceipt, creatingVideo ? "task-associated" : previousState !== activeReceipt.upstreamState ? "task-status" : undefined);
+            }
             res.end(body);
         }
     } catch (error) {
-        if (!res.headersSent) rollbackProxyCharge(req.user, receipt);
+        if (!res.headersSent && !isVideo) rollbackProxyCharge(req.user, receipt);
+        if (isVideo && receipt && !receipt.refunded) {
+            receipt.upstreamState = "unknown";
+            receipt.lastError = String(error?.message || error).slice(0, 500);
+            persistUsers();
+            database.recordBilling(receipt, "outcome-unknown");
+        }
+        if (videoReceipt?.status === "pending") {
+            videoReceipt.lastError = `查询失败：${String(error?.message || error).slice(0, 500)}`;
+            persistUsers();
+            database.recordBilling(videoReceipt, "query-failed");
+        }
         // 上游可能在已发送部分响应后断开；此时不能再次设置状态码/JSON，
         // 否则会触发 ERR_HTTP_HEADERS_SENT 并崩溃整个后端进程。
         if (res.headersSent) {
@@ -1421,6 +1523,79 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
 });
 
 app.use(express.json({ limit: "20mb" }));
+
+app.get("/api/billing/video-quote/:channelId", auth, (req, res) => {
+    const revision = database.currentChannelRevision(req.params.channelId);
+    const model = String(req.query.model || "");
+    if (!revision || revision.archived || !revision.config.models.some((m) => m.name === model && m.capability === "video")) return res.status(404).json({ error: "视频模型不可用" });
+    if (!canUseCapability(req.user, "video")) return res.status(403).json({ error: "无视频生成权限" });
+    const override = Number.isFinite(Number(settings.modelPricing[model]));
+    const unitPrice = override ? Number(settings.modelPricing[model]) : settings.pricing.video;
+    const pricingUnit = override ? settings.modelVideoPricingUnits[model] || "task" : settings.videoPricingUnit;
+    const quote = { purpose: "video-quote", userId: req.user.id, channelRevisionId: revision.id, model, unitPrice, pricingUnit, reservedSeconds: pricingUnit === "second" ? 15 : null, exp: Date.now() + 300000 };
+    res.json({ ...quote, reservedCost: req.user.role === "admin" ? 0 : durationCost(unitPrice, pricingUnit === "second" ? 15000 : 1000), token: sign(quote) });
+});
+
+app.get("/api/video-tasks/:channelId/:taskId", auth, async (req, res) => {
+    let receipt = findVideoReceipt(req.user, req.params.channelId, req.params.taskId);
+    if (!receipt) return res.status(404).json({ error: "视频任务不存在" });
+    if (receipt.status === "pending") void videoDelivery.run(receipt).catch(() => {});
+    receipt = billingReceipt(req.user, receipt.id);
+    res.json({ task: { id: receipt.taskId, generationTaskId: receipt.generationTaskId, status: receipt.refunded ? "failed" : receipt.status === "completed" ? "completed" : "pending", error: receipt.lastError || "", needsReview: Boolean(receipt.needsReview), actualDurationMs: receipt.actualDurationMs, url: receipt.status === "completed" ? `/api/video-tasks/${encodeURIComponent(receipt.channelId)}/${encodeURIComponent(receipt.taskId)}/media` : undefined } });
+});
+
+app.get("/api/video-tasks/:channelId/:taskId/media", auth, (req, res) => {
+    const receipt = findVideoReceipt(req.user, req.params.channelId, req.params.taskId);
+    if (!receipt || receipt.status !== "completed" || !receipt.media) return res.status(404).json({ error: "视频尚未完成交付" });
+    res.type("video/mp4").sendFile(videoDelivery.fileFor(receipt));
+});
+
+app.post("/api/video-tasks/:channelId/:taskId/ack", auth, (req, res) => {
+    const receipt = findVideoReceipt(req.user, req.params.channelId, req.params.taskId);
+    if (!receipt) return res.status(404).json({ error: "视频任务不存在" });
+    if (receipt.refunded) return res.status(409).json({ error: "视频任务已退款，不能再次确认扣费" });
+    if (receipt.status !== "completed") {
+        return res.status(409).json({ error: "服务器尚未完成任务取回与实际时长核实" });
+    }
+    res.json({ ok: true, tracked: true, user: publicUser(req.user) });
+});
+
+app.post("/api/video-tasks/:channelId/:taskId/delivery-error", auth, (req, res) => {
+    const receipt = findVideoReceipt(req.user, req.params.channelId, req.params.taskId);
+    if (receipt?.status === "pending" && !receipt.refunded) {
+        receipt.lastError = `取回失败：${String(req.body?.reason || "未知原因").slice(0, 500)}`;
+        persistUsers();
+        database.recordBilling(receipt, "delivery-failed");
+    }
+    res.json({ ok: true });
+});
+
+function listBillingLedger(req, res, userId) {
+    const filters = Object.fromEntries(["userId", "taskId", "kind", "status", "model"].map((key) => [key, String(req.query[key] || "").slice(0, 200)]));
+    if (userId) filters.userId = userId;
+    for (const key of ["from", "to"]) {
+        if (!req.query[key]) continue;
+        const date = new Date(String(req.query[key]));
+        if (!Number.isFinite(date.getTime())) return res.status(400).json({ error: "台账时间范围无效" });
+        filters[key] = date.toISOString();
+    }
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    res.json(database.listBilling({ ...filters, limit: Math.floor(limit), offset: Math.floor(offset) }));
+}
+
+app.get("/api/admin/billing-ledger", auth, adminOnly, (req, res) => listBillingLedger(req, res));
+
+app.get("/api/billing/ledger", auth, (req, res) => listBillingLedger(req, res, req.user.id));
+
+app.get("/api/billing/ledger/:receiptId/events", auth, (req, res) => {
+    if (!database.getBillingReceipt(req.user.id, req.params.receiptId)) return res.status(404).json({ error: "账单不存在" });
+    res.json({ events: database.billingEvents(req.params.receiptId) });
+});
+
+app.get("/api/admin/billing-ledger/:receiptId/events", auth, adminOnly, (req, res) => {
+    res.json({ events: database.billingEvents(req.params.receiptId) });
+});
 
 function adminOnly(req, res, next) {
     if (req.user.role !== "admin") return res.status(403).json({ error: "需要管理员权限" });
@@ -1985,9 +2160,10 @@ app.get("/api/canvas/files/:storageKey", auth, requirePermission("canvas"), (req
 // ---------- AI 渠道下发（密钥绝不下发到前端）----------
 app.get("/api/config/ai", auth, (req, res) => {
     res.json({
-        channels: aiChannels.map((c) => ({ id: c.id, name: c.name, apiFormat: c.apiFormat, models: c.models })),
+        channels: aiChannels.filter((c) => !database.currentChannelRevision(c.id)?.archived).map((c) => ({ id: c.id, name: c.name, apiFormat: c.apiFormat, models: c.models })),
         defaultModels: settings.defaultModels,
         agentLlm: settings.agentLlm,
+        billing: { pricing: settings.pricing, modelPricing: settings.modelPricing, videoPricingUnit: settings.videoPricingUnit, modelVideoPricingUnits: settings.modelVideoPricingUnits },
     });
 });
 
@@ -1999,37 +2175,21 @@ app.post("/api/billing/charge", rateLimit({ max: 120, name: "billing-charge" }),
     const user = req.user;
     if (!canUseCapability(user, kind)) return res.status(403).json({ error: "当前账户没有使用该模型能力的权限" });
     // 单价：优先按具体模型定价，未配置时回退到按类型单价
-    const modelPrice = model && Number.isFinite(Number(settings.modelPricing[model])) ? Number(settings.modelPricing[model]) : null;
-    const unitPrice = modelPrice !== null ? modelPrice : Number(settings.pricing[kind]) || 0;
-    const cost = user.role === "admin" ? 0 : unitPrice;
-    if (user.role !== "admin" && user.credits < cost) {
-        return res.status(402).json({ error: `额度不足：本次生成${model ? `（${model}）` : ""}需要 ${cost} 点，当前余额 ${user.credits} 点，请联系管理员充值。` });
-    }
-    user.credits = Math.max(0, user.credits - cost);
-    user.usage[kind] += 1;
-    user.usage.creditsSpent += cost;
-    if (!Array.isArray(user.billingCharges)) user.billingCharges = [];
-    const receiptId = crypto.randomUUID();
-    user.billingCharges.push({ id: receiptId, kind, model, cost, refunded: false, createdAt: new Date().toISOString() });
-    user.billingCharges = user.billingCharges.slice(-200);
-    persistUsers();
-    res.json({ receiptId, user: publicUser(user) });
+    if (kind === "video") return res.status(400).json({ error: "视频必须通过服务器任务接口预扣，不能使用通用扣费接口" });
+    try {
+        const receipt = beginProxyCharge(user, kind, model, { source: "client" });
+        completeProxyCharge(receipt);
+        res.json({ receiptId: receipt.id, user: publicUser(user) });
+    } catch (error) { res.status(error.statusCode || 500).json({ error: error.message }); }
 });
 
 app.post("/api/billing/refund", rateLimit({ max: 120, name: "billing-refund" }), auth, (req, res) => {
     const receiptId = String(req.body?.receiptId || "");
     const user = req.user;
-    const receipt = Array.isArray(user.billingCharges) ? user.billingCharges.find((item) => item.id === receiptId) : null;
+    const receipt = billingReceipt(user, receiptId);
     if (!receipt) return res.status(404).json({ error: "计费收据不存在" });
     if (receipt.source === "proxy") return res.status(403).json({ error: "服务器代理账单不能手动退款" });
-    if (receipt.refunded) return res.status(409).json({ error: "该计费收据已经退款" });
-    const cost = Math.max(0, Number(receipt.cost) || 0);
-    user.credits += cost;
-    user.usage[receipt.kind] = Math.max(0, (Number(user.usage[receipt.kind]) || 0) - 1);
-    user.usage.creditsSpent = Math.max(0, (Number(user.usage.creditsSpent) || 0) - cost);
-    receipt.refunded = true;
-    receipt.refundedAt = new Date().toISOString();
-    persistUsers();
+    database.releaseCredit(receipt.id, { allowCompleted: true, actorId: user.id, reason: "客户端同步调用失败" });
     res.json({ ok: true, user: publicUser(user) });
 });
 
@@ -2361,6 +2521,8 @@ app.post("/api/admin/users", auth, adminOnly, (req, res) => {
     if (!validUsername(name)) return res.status(400).json({ error: "用户名需为 3-40 位中文、字母、数字、下划线或连字符" });
     if (String(password).length < 10) return res.status(400).json({ error: "密码至少 10 个字符" });
     if (users.some((u) => u.username.toLowerCase() === name.toLowerCase())) return res.status(409).json({ error: "该用户名已被注册" });
+    try { creditUnits(credits === undefined ? settings.defaultCredits : credits); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
 
     const salt = genSalt();
     const isAdminRole = role === "admin";
@@ -2399,7 +2561,8 @@ app.patch("/api/admin/users/:id", auth, adminOnly, (req, res) => {
         user.status = status;
     }
     if (typeof addCredits === "number" && Number.isFinite(addCredits)) {
-        user.credits = Math.max(0, user.credits + Math.trunc(addCredits));
+        try { database.adjustCredits(user.id, addCredits, String(req.body.operationKey || ""), req.user.id, String(req.body.reason || "")); }
+        catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
     }
     if (typeof password === "string" && password) {
         if (password.length < 10) return res.status(400).json({ error: "密码至少 10 个字符" });
@@ -2414,6 +2577,7 @@ app.patch("/api/admin/users/:id", auth, adminOnly, (req, res) => {
 app.delete("/api/admin/users/:id", auth, adminOnly, (req, res) => {
     if (req.params.id === req.user.id) return res.status(400).json({ error: "不能删除自己" });
     const user = findUser(req.params.id);
+    if (database.pendingBilling().some((r) => r.userId === req.params.id)) return res.status(409).json({ error: "账号存在未结算任务，请先完成核实" });
     const before = users.length;
     users = users.filter((u) => u.id !== req.params.id);
     if (users.length === before) return res.status(404).json({ error: "用户不存在" });
@@ -2434,7 +2598,7 @@ function maskKey(key) {
 }
 function publicChannel(c) {
     const { apiKey, ...rest } = c;
-    return { ...rest, hasKey: Boolean(apiKey), apiKeyMasked: maskKey(apiKey) };
+    return { ...rest, archived: Boolean(database.currentChannelRevision(c.id)?.archived), pendingTasks: database.channelDependencies(c.id).length, hasKey: Boolean(apiKey), apiKeyMasked: maskKey(apiKey) };
 }
 function channelModelSelectionExists(selection, capability) {
     return aiChannels.some((channel) => Array.isArray(channel?.models) && channel.models.some((model) => model.capability === capability && `${channel.id}::${model.name}` === selection));
@@ -2478,6 +2642,56 @@ app.get("/api/admin/channels", auth, adminOnly, (req, res) => {
     res.json({ channels: aiChannels.map(publicChannel) });
 });
 
+app.get("/api/admin/channels/:id/history", auth, adminOnly, (req, res) => {
+    res.json({ events: database.channelHistory(req.params.id), pendingTasks: database.channelDependencies(req.params.id) });
+});
+
+app.post("/api/admin/channels/:id/recover", auth, adminOnly, async (req, res) => {
+    const receipt = database.channelDependencies(req.params.id).find((r) => r.id === req.body?.receiptId);
+    const apiKey = String(req.body?.apiKey || "").trim();
+    if (!receipt?.taskId || !receipt.channelRevisionId || !apiKey || /[\r\n]/.test(apiKey)) return res.status(400).json({ error: "请提供待恢复账单和同一上游账号的新密钥" });
+    try {
+        const revision = database.channelRevision(receipt.channelRevisionId);
+        const baseUrl = req.body.baseUrl ? normalizeChannelBaseUrl(req.body.baseUrl) : "";
+        if (req.body.baseUrl && !baseUrl) return res.status(400).json({ error: "恢复地址无效" });
+        const recovery = baseUrl ? { originalBaseUrl: revision.config.baseUrl, baseUrl } : undefined;
+        const queryUrl = videoQueryUrl(receipt, recovery);
+        const requestOptions = { method: "GET", headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(30000), dispatcher: aiDispatcher };
+        const response = revision.config.apiFormat === "grok-video-v2" ? await requestWithGrokAiohttp(queryUrl, requestOptions) : await fetch(queryUrl, requestOptions);
+        if (!response.ok) { await response.body?.cancel(); return res.status(409).json({ error: "新密钥无法查询原任务，未修改原关联" }); }
+        const outcome = videoOutcome(await readBodyLimited(response.body, 1024 * 1024));
+        if (!revision || outcome.taskId !== receipt.taskId) return res.status(409).json({ error: "未取得匹配的原任务ID，不能确认新密钥权限" });
+        database.recoverChannelCredential(receipt.channelRevisionId, apiKey, req.user.id, receipt.taskId, baseUrl);
+        receipt.lastError = ""; receipt.needsReview = false;
+        database.recordBilling(receipt, "channel-recovered");
+        database.retryVideo(receipt.id);
+        res.json({ ok: true });
+    } catch { res.status(502).json({ error: "原任务权限验证失败，未修改原关联" }); }
+});
+
+app.post("/api/admin/channels/:id/revoke", auth, adminOnly, (req, res) => {
+    database.archiveChannel(req.params.id, true, req.user.id);
+    database.revokeChannelCredentials(req.params.id, req.user.id);
+    res.json({ ok: true });
+});
+
+app.post("/api/admin/billing-ledger/:id/resolve", auth, adminOnly, (req, res) => {
+    const receipt = database.pendingBilling().find((r) => r.id === req.params.id);
+    if (!receipt) return res.status(409).json({ error: "账单已处理或不存在" });
+    const reason = String(req.body?.reason || "").trim().slice(0, 500);
+    if (!reason) return res.status(400).json({ error: "请记录核实依据" });
+    if (req.body.action === "release") {
+        if (!req.body.confirmedUndeliverable) return res.status(400).json({ error: "需确认已核实无法交付后退回" });
+        database.releaseCredit(receipt.id, { actorId: req.user.id, reason });
+    } else if (req.body.action === "retry") {
+        receipt.needsReview = false; receipt.lastError = reason;
+        database.recordBilling(receipt, "review-retry");
+        database.retryVideo(receipt.id);
+        void videoDelivery.run(receipt).catch(() => {});
+    } else return res.status(400).json({ error: "无效的核实操作" });
+    res.json({ ok: true });
+});
+
 app.post("/api/admin/channels", auth, adminOnly, (req, res) => {
     const { name, baseUrl, apiKey, apiFormat, models } = req.body || {};
     const clean = (v) => String(v ?? "").replace(/[\r\n]/g, "").trim();
@@ -2497,13 +2711,15 @@ app.post("/api/admin/channels", auth, adminOnly, (req, res) => {
         models: normalizedModels,
     };
     aiChannels.push(channel);
+    database.registerChannelRevision(channel, req.user.id);
     persistChannels();
     res.json({ channel: publicChannel(channel) });
 });
 
 app.patch("/api/admin/channels/:id", auth, adminOnly, (req, res) => {
-    const channel = aiChannels.find((c) => c.id === req.params.id);
-    if (!channel) return res.status(404).json({ error: "渠道不存在" });
+    const original = aiChannels.find((c) => c.id === req.params.id);
+    if (!original) return res.status(404).json({ error: "渠道不存在" });
+    const channel = structuredClone(original);
     const { name, baseUrl, apiKey, apiFormat, models } = req.body || {};
     const clean = (v) => String(v ?? "").replace(/[\r\n]/g, "").trim();
     const nextApiFormat = typeof apiFormat === "string" ? normalizeChannelApiFormat(apiFormat) : channel.apiFormat;
@@ -2519,6 +2735,9 @@ app.patch("/api/admin/channels/:id", auth, adminOnly, (req, res) => {
     if (typeof apiKey === "string" && clean(apiKey)) channel.apiKey = clean(apiKey); // 留空保持不变
     if (typeof apiFormat === "string") channel.apiFormat = nextApiFormat;
     if (Array.isArray(models)) channel.models = nextModels;
+    database.registerChannelRevision(channel, req.user.id);
+    if (typeof req.body.archived === "boolean") database.archiveChannel(channel.id, req.body.archived, req.user.id);
+    Object.assign(original, channel);
     persistChannels();
     const defaultsChanged = clearInvalidDefaultModels();
     const agentModelChanged = clearInvalidAgentLlmModel();
@@ -2527,10 +2746,10 @@ app.patch("/api/admin/channels/:id", auth, adminOnly, (req, res) => {
 });
 
 app.delete("/api/admin/channels/:id", auth, adminOnly, (req, res) => {
-    const before = aiChannels.length;
-    aiChannels = aiChannels.filter((c) => c.id !== req.params.id);
-    if (aiChannels.length === before) return res.status(404).json({ error: "渠道不存在" });
-    persistChannels();
+    if (!aiChannels.some((c) => c.id === req.params.id)) return res.status(404).json({ error: "渠道不存在" });
+    const dependencies = database.channelDependencies(req.params.id);
+    if (dependencies.length) return res.status(409).json({ error: `渠道有 ${dependencies.length} 个未结算任务，请使用停止新生成，保留原任务取回能力`, pendingTasks: dependencies.length });
+    database.archiveChannel(req.params.id, true, req.user.id);
     // 清理指向该渠道的默认模型
     for (const key of Object.keys(settings.defaultModels)) {
         if (String(settings.defaultModels[key]).startsWith(`${req.params.id}::`)) settings.defaultModels[key] = "";
@@ -2541,7 +2760,12 @@ app.delete("/api/admin/channels/:id", auth, adminOnly, (req, res) => {
 });
 
 app.put("/api/admin/settings", auth, adminOnly, (req, res) => {
-    const { pricing, defaultPermissions, defaultCredits, modelPricing, defaultModels, agentLlm } = req.body || {};
+    const { pricing, defaultPermissions, defaultCredits, modelPricing, defaultModels, agentLlm, videoPricingUnit, modelVideoPricingUnits } = req.body || {};
+    try {
+        for (const value of [...Object.values(pricing || {}), ...Object.values(modelPricing || {}), ...(defaultCredits !== undefined ? [defaultCredits] : [])]) creditUnits(value);
+    } catch (error) { return res.status(400).json({ error: error.message }); }
+    if (videoPricingUnit !== undefined && !["task", "second"].includes(videoPricingUnit)) return res.status(400).json({ error: "视频计费单位无效" });
+    if (modelVideoPricingUnits !== undefined && (!modelVideoPricingUnits || typeof modelVideoPricingUnits !== "object" || Array.isArray(modelVideoPricingUnits) || Object.entries(modelVideoPricingUnits).some(([model, unit]) => !model.trim() || model.length > 200 || !["task", "second"].includes(unit)))) return res.status(400).json({ error: "视频模型计费单位无效" });
     // 在修改其它设置前校验 Agent LLM 选择，避免无效模型导致请求 400
     // 但其它字段已经留在进程内存、随后被意外持久化。
     const requestedAgentModel = agentLlm && typeof agentLlm === "object" ? String(agentLlm.model ?? "").trim() : "";
@@ -2575,6 +2799,8 @@ app.put("/api/admin/settings", auth, adminOnly, (req, res) => {
         }
         settings.modelPricing = next;
     }
+    if (videoPricingUnit !== undefined) settings.videoPricingUnit = videoPricingUnit;
+    if (modelVideoPricingUnits !== undefined) settings.modelVideoPricingUnits = { ...modelVideoPricingUnits };
     if (Array.isArray(defaultPermissions)) settings.defaultPermissions = defaultPermissions.filter((p) => ALL_PERMISSIONS.includes(p));
     if (Number.isFinite(Number(defaultCredits)) && Number(defaultCredits) >= 0) settings.defaultCredits = Number(defaultCredits);
     if (agentLlm && typeof agentLlm === "object") {

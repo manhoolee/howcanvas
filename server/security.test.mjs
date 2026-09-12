@@ -94,6 +94,11 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
         for await (const chunk of req) chunks.push(chunk);
         const body = Buffer.concat(chunks).toString("utf8");
         upstreamRequests.push({ method: req.method, url: req.url, authorization: req.headers.authorization, headers: req.headers, body });
+        if (req.url.startsWith("/v2/videos/generations")) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ task_id: "grok:task-id", status: "IN_PROGRESS" }));
+            return;
+        }
         if (body.includes('"prompt":"fail"')) {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "mock failure" }));
@@ -373,7 +378,7 @@ test("服务端安全边界：注册、权限、AI 允许列表、计费回滚�
     });
     const grokCreated = await request(baseUrl, `/api/ai/${grokChannelId}/v2/videos/generations`, {
         cookie: loginAdmin.cookie,
-        headers: { "X-Infinite-Canvas-Model": "grok-video-3" },
+        headers: { "X-Infinite-Canvas-Model": "grok-video-3", "Idempotency-Key": "security-grok-create-0001" },
         body: grokBody,
     });
     assert.equal(grokCreated.status, 200);

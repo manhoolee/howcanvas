@@ -1,6 +1,7 @@
 import type { AiConfig } from "@/stores/use-config-store";
 import { getAuthEpoch } from "./backend";
 import { readImageResource } from "./image-transfer";
+import { postGeneration } from "./generation-request";
 
 export type ServerImageTaskStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "unknown";
 export type ServerImageTaskPhase = "queued" | "generating" | "upstream-complete" | "retrieving" | "persisted" | "failed" | "canceled" | "unknown";
@@ -36,6 +37,7 @@ export type ServerImageTask = {
 };
 
 export type ServerImageTaskOptions = {
+    requestId?: string;
     signal?: AbortSignal;
     existingTaskId?: string;
     onTaskSubmitted?: (taskId: string) => void;
@@ -94,20 +96,17 @@ export async function requestServerImageTask(
     let taskId = options?.existingTaskId || "";
     if (!taskId) {
         const submitRoute = /(?:^|[-_.])seedream(?:[-_.]|$)/i.test(config.model.trim()) ? "seedream-tasks" : "image-tasks";
-        const response = await fetch(`/api/${submitRoute}/${encodeURIComponent(channelId)}/${action}`, {
-            method: "POST",
+        const response = await postGeneration<{ task?: ServerImageTask; error?: string }>(`/api/${submitRoute}/${encodeURIComponent(channelId)}/${action}`, body, {
             headers: {
                 ...(config.apiKey.trim() ? { Authorization: `Bearer ${config.apiKey.trim()}` } : {}),
                 "X-Infinite-Canvas-Model": config.model.trim(),
                 ...(options?.clientContext ? { "X-Infinite-Canvas-Context": encodeContext(options.clientContext) } : {}),
                 ...(contentType ? { "Content-Type": contentType } : {}),
             },
-            credentials: "same-origin",
-            body,
             signal: options?.signal,
-        });
-        const payload = await response.json().catch(() => ({})) as { task?: ServerImageTask; error?: string };
-        if (!response.ok || !payload.task?.id) throw new Error(payload.error || `创建后台图片任务失败（${response.status}）`);
+        }, options?.requestId);
+        const payload = response.data;
+        if (!payload.task?.id) throw new Error(payload.error || `创建后台图片任务失败（${response.status}）`);
         taskId = payload.task.id;
         options?.onTaskSubmitted?.(taskId);
         options?.onTaskUpdated?.(payload.task);

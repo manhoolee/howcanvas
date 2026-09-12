@@ -20,6 +20,8 @@ type AuthState = {
     currentUserId: string | null;
     pricing: Pricing;
     modelPricing: Record<string, number>;
+    videoPricingUnit: "task" | "second";
+    modelVideoPricingUnits: Record<string, "task" | "second">;
     defaultPermissions: PermissionKey[];
     defaultCredits: number;
     initialized: boolean;
@@ -42,6 +44,7 @@ type AuthState = {
     deleteAccount: (id: string) => Promise<ActionResult>;
     setPricing: (pricing: Pricing) => void;
     setModelPricing: (modelPricing: Record<string, number>) => void;
+    saveBillingSettings: (input: { pricing: Pricing; modelPricing: Record<string, number>; videoPricingUnit: "task" | "second"; modelVideoPricingUnits: Record<string, "task" | "second"> }) => Promise<void>;
     setDefaultPermissions: (permissions: PermissionKey[]) => void;
 };
 
@@ -52,6 +55,7 @@ async function loadServerAiConfig(userId: string) {
         // 登录/退出或切换账号期间，旧请求可能晚于新会话返回；禁止它把
         // 上一个账号的渠道元数据和 Agent 配置重新注入当前页面。
         if (requestEpoch !== getAuthEpoch() || useAuthStore.getState().currentUserId !== userId) return;
+        if (data.billing) useAuthStore.setState(data.billing);
         applyServerAiConfig(data);
     } catch {
         // 后端未配置 AI 信息时忽略
@@ -108,6 +112,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     currentUserId: null,
     pricing: { ...DEFAULT_PRICING },
     modelPricing: {},
+    videoPricingUnit: "task",
+    modelVideoPricingUnits: {},
     defaultPermissions: [...DEFAULT_USER_PERMISSIONS],
     defaultCredits: 100,
     initialized: false,
@@ -179,6 +185,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
                 accounts: users,
                 pricing: settings.pricing,
                 modelPricing: settings.modelPricing || {},
+                videoPricingUnit: settings.videoPricingUnit || "task",
+                modelVideoPricingUnits: settings.modelVideoPricingUnits || {},
                 defaultPermissions: settings.defaultPermissions,
                 defaultCredits: settings.defaultCredits,
             });
@@ -244,6 +252,11 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "删除失败" };
         }
+    },
+
+    saveBillingSettings: async (input) => {
+        await backend.adminSaveSettings(input);
+        set(input);
     },
 
     setPricing: (pricing) => {

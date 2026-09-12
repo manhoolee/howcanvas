@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { App, AutoComplete, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Popconfirm, Select, Table, Tag, Tabs } from "antd";
+import { App, AutoComplete, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Popconfirm, Select, Switch, Table, Tag, Tabs } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { ArrowLeft, Bot, Cable, Coins, KeyRound, Plus, ShieldCheck } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -9,6 +9,7 @@ import { guessCapability, modelOptionName, useConfigStore } from "@/stores/use-c
 import { backend, type AdminAiChannel, type AgentSkillId, type ServerAgentLlmConfig, type ServerChannelModel } from "@/services/api/backend";
 import { applyServerAiConfig, isServerChannelId } from "@/lib/server-ai-config";
 import { PERMISSIONS, USAGE_KINDS, permissionLabel, usageKindLabel, type PermissionKey, type Pricing, type UsageKind } from "@/constant/permissions";
+import { BillingLedger } from "@/components/billing-ledger";
 
 type CreateUserFormValues = {
     username: string;
@@ -322,21 +323,27 @@ function StatsTab() {
 function BillingTab() {
     const { message } = App.useApp();
     const pricing = useAuthStore((s) => s.pricing);
-    const setPricing = useAuthStore((s) => s.setPricing);
+    const saveBillingSettings = useAuthStore((s) => s.saveBillingSettings);
     const modelPricing = useAuthStore((s) => s.modelPricing);
-    const setModelPricing = useAuthStore((s) => s.setModelPricing);
+    const videoPricingUnit = useAuthStore((s) => s.videoPricingUnit);
+    const modelVideoPricingUnits = useAuthStore((s) => s.modelVideoPricingUnits);
     const defaultPermissions = useAuthStore((s) => s.defaultPermissions);
     const setDefaultPermissions = useAuthStore((s) => s.setDefaultPermissions);
     const channels = useConfigStore((s) => s.config.channels);
 
     const [draft, setDraft] = useState<Pricing>({ ...pricing });
     const [modelPrices, setModelPrices] = useState<Record<string, number | null>>({});
+    const [videoUnit, setVideoUnit] = useState(videoPricingUnit);
+    const [modelUnits, setModelUnits] = useState({ ...modelVideoPricingUnits });
+    const [saving, setSaving] = useState(false);
     const [customByKind, setCustomByKind] = useState<Record<UsageKind, string[]>>({ image: [], video: [], audio: [], text: [] });
     const [newModel, setNewModel] = useState<Record<UsageKind, string>>({ image: "", video: "", audio: "", text: "" });
     const [perms, setPerms] = useState<PermissionKey[]>([...defaultPermissions]);
 
     // 服务器设置异步到达后同步一次（登录/刷新时）
     useEffect(() => setDraft({ ...pricing }), [pricing]);
+    useEffect(() => setVideoUnit(videoPricingUnit), [videoPricingUnit]);
+    useEffect(() => setModelUnits({ ...modelVideoPricingUnits }), [modelVideoPricingUnits]);
     useEffect(() => setPerms([...defaultPermissions]), [defaultPermissions]);
     useEffect(() => {
         setModelPrices({ ...modelPricing });
@@ -379,19 +386,23 @@ function BillingTab() {
         setNewModel((prev) => ({ ...prev, [kind]: "" }));
     }
 
-    function saveAll() {
+    async function saveAll() {
         const next: Record<string, number> = {};
         Object.entries(modelPrices).forEach(([model, price]) => {
             if (price !== null && price !== undefined && model.trim()) next[model.trim()] = Math.max(0, price);
         });
-        setPricing(draft);
-        setModelPricing(next);
-        message.success("计费设置已保存");
+        setSaving(true);
+        try {
+            await saveBillingSettings({ pricing: draft, modelPricing: next, videoPricingUnit: videoUnit, modelVideoPricingUnits: modelUnits });
+            message.success("计费设置已保存");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "计费设置保存失败");
+        } finally { setSaving(false); }
     }
 
     return (
         <div className="grid gap-4">
-            <Card title="计费设置（点 / 次）" className="!rounded-xl">
+            <Card title="计费设置" className="!rounded-xl">
                 <div className="grid gap-4 sm:grid-cols-2">
                     {USAGE_KINDS.map((k) => {
                         const models = [...modelsByKind[k.key], ...customByKind[k.key].filter((name) => !modelsByKind[k.key].includes(name))];
@@ -402,6 +413,7 @@ function BillingTab() {
                                     <span className="inline-flex items-center gap-2 text-xs text-stone-500">
                                         默认单价
                                         <InputNumber size="small" min={0} value={draft[k.key]} onChange={(v) => setDraft((d) => ({ ...d, [k.key]: v ?? 0 }))} style={{ width: 88 }} />
+                                        {k.key === "video" ? <Select aria-label="视频默认计费单位" size="small" value={videoUnit} onChange={setVideoUnit} style={{ width: 88 }} options={[{ value: "task", label: "点/条" }, { value: "second", label: "点/秒" }]} /> : "点/次"}
                                     </span>
                                 </div>
                                 <div className="space-y-2">
@@ -419,6 +431,7 @@ function BillingTab() {
                                                 onChange={(v) => setModelPrices((prev) => ({ ...prev, [name]: v === null || v === undefined ? null : v }))}
                                                 style={{ width: 88 }}
                                             />
+                                            {k.key === "video" && <Select aria-label={`${name}计费单位`} size="small" disabled={modelPrices[name] == null} value={modelPrices[name] == null ? videoUnit : modelUnits[name] || "task"} onChange={(unit: "task" | "second") => setModelUnits((prev) => ({ ...prev, [name]: unit }))} style={{ width: 88 }} options={[{ value: "task", label: "点/条" }, { value: "second", label: "点/秒" }]} />}
                                         </div>
                                     ))}
                                 </div>
@@ -443,13 +456,14 @@ function BillingTab() {
                     })}
                 </div>
                 <div className="mt-4 flex items-center gap-3">
-                    <Button type="primary" onClick={saveAll}>
+                    <Button type="primary" loading={saving} onClick={saveAll}>
                         保存计费设置
                     </Button>
                     <span className="text-xs text-stone-400">模型未单独定价（留空）时，按该类型的默认单价计费。</span>
                 </div>
             </Card>
 
+            <BillingLedger />
             <Card title="新用户默认权限" className="!rounded-xl">
                 <p className="mb-3 text-sm text-stone-500">新注册用户将自动获得以下权限（现有用户不受影响）。</p>
                 <Checkbox.Group value={perms} onChange={(v) => setPerms(v as PermissionKey[])} className="mb-4 flex flex-wrap gap-4">
@@ -561,7 +575,7 @@ function ChannelsManagerCard({ channels, onChanged }: { channels: AdminAiChannel
     async function remove(channel: AdminAiChannel) {
         try {
             await backend.adminDeleteChannel(channel.id);
-            message.success(`渠道「${channel.name}」已删除`);
+            message.success(`渠道「${channel.name}」已归档`);
             onChanged();
             void refreshServerChannels();
         } catch (e) {
@@ -575,20 +589,29 @@ function ChannelsManagerCard({ channels, onChanged }: { channels: AdminAiChannel
         { title: "格式", dataIndex: "apiFormat", width: 120, render: (v: string) => <Tag className="!m-0">{v === "gemini" ? "Gemini" : v === "grok-video-v2" ? "Grok V2" : v === "minimax-h3" ? "MiniMax H3" : "OpenAI"}</Tag> },
         { title: "API Key", dataIndex: "apiKeyMasked", width: 140, render: (v: string) => <code className="text-xs">{v || "未设置"}</code> },
         { title: "模型数", key: "models", width: 80, render: (_, r) => <span className="tabular-nums">{r.models.length}</span> },
+        { title: "新生成", width: 100, render: (_, r) => <Switch aria-label={`${r.name}接收新生成`} checked={!r.archived} onChange={async (checked) => {
+            try { await backend.adminPatchChannel(r.id, { archived: !checked }); onChanged(); void refreshServerChannels(); }
+            catch (error) { message.error(error instanceof Error ? error.message : "更新失败"); }
+        }} /> },
+        { title: "未结算", width: 80, render: (_, r) => r.pendingTasks || 0 },
         {
             title: "操作",
             key: "actions",
             width: 140,
             render: (_, r) => (
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1">
                     <Button size="small" onClick={() => openEdit(r)}>
                         编辑
                     </Button>
-                    <Popconfirm title={`删除渠道「${r.name}」？`} okText="删除" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => void remove(r)}>
+                    <Popconfirm title={`归档渠道「${r.name}」？`} okText="归档" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => void remove(r)}>
                         <Button size="small" danger>
-                            删除
+                            归档
                         </Button>
                     </Popconfirm>
+                    <Popconfirm title="停止本平台使用此渠道的现有密钥？" description="未完成任务将等待凭据恢复；供应商端密钥需另行撤销。" okText="禁用" cancelText="取消" onConfirm={async () => {
+                        try { await backend.adminRevokeChannel(r.id); onChanged(); void refreshServerChannels(); message.success("本平台已停止使用现有凭据"); }
+                        catch (error) { message.error(error instanceof Error ? error.message : "禁用失败"); }
+                    }}><Button size="small" danger>禁用凭据</Button></Popconfirm>
                 </div>
             ),
         },
@@ -807,6 +830,8 @@ function ApiMapTab() {
     const config = useConfigStore((s) => s.config);
     const pricing = useAuthStore((s) => s.pricing);
     const modelPricing = useAuthStore((s) => s.modelPricing);
+    const videoPricingUnit = useAuthStore((s) => s.videoPricingUnit);
+    const modelVideoPricingUnits = useAuthStore((s) => s.modelVideoPricingUnits);
 
     // 解析当前配置的模型：名称 + 所属渠道 + 是否走服务器代理
     const resolveModel = (optionValue?: string) => {
@@ -819,7 +844,8 @@ function ApiMapTab() {
     const priceText = (kind?: UsageKind, model?: string) => {
         if (!kind) return "不计费";
         const specific = model !== undefined ? modelPricing[model] : undefined;
-        return `${specific !== undefined ? specific : pricing[kind]} 点/次${specific !== undefined ? "（模型价）" : "（类型价）"}`;
+        const unit = kind === "video" ? (specific !== undefined ? modelVideoPricingUnits[model || ""] || "task" : videoPricingUnit) === "second" ? "秒" : "条" : "次";
+        return `${specific !== undefined ? specific : pricing[kind]} 点/${unit}${specific !== undefined ? "（模型价）" : "（类型价）"}`;
     };
 
     const rows: ApiMapRow[] = [

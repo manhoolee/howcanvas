@@ -35,12 +35,15 @@ export type ServerUser = {
     role: "admin" | "user";
     permissions: PermissionKey[];
     credits: number;
+    reservedCredits?: number;
     status: "active" | "disabled";
     createdAt: string;
     usage: { image: number; video: number; audio: number; text: number; creditsSpent: number };
 };
 
 export type ServerSettings = {
+    videoPricingUnit: "task" | "second";
+    modelVideoPricingUnits: Record<string, "task" | "second">;
     pricing: Pricing;
     defaultPermissions: PermissionKey[];
     defaultCredits: number;
@@ -76,6 +79,36 @@ export type ServerMediaIndexEntry = {
     updatedAt: string;
     version: number;
 };
+
+export type BillingReceipt = {
+    id: string;
+    userId: string;
+    createdAt: string;
+    kind: string;
+    model: string;
+    unitPrice: number;
+    pricingUnit?: "task" | "second";
+    actualSeconds?: number;
+    actualDurationMs?: number;
+    reservedCost?: number;
+    confirmedCost?: number;
+    returnedCost?: number;
+    generationTaskId?: string;
+    channelRevisionId?: string;
+    needsReview?: boolean;
+    quantity: number;
+    cost: number;
+    taskId: string;
+    channelId?: string;
+    requestId?: string;
+    status: string;
+    refunded: boolean;
+    confirmedAt?: string;
+    refundedAt?: string;
+    lastError?: string;
+    upstreamState?: string;
+};
+export type BillingEvent = { id: number; event: string; createdAt: string; receipt: BillingReceipt };
 
 export class BackendRequestError extends Error {
     constructor(message: string, readonly status: number) {
@@ -134,6 +167,7 @@ export type ServerAiConfig = {
     channels: { id: string; name: string; apiFormat: string; models: ServerChannelModel[] }[];
     defaultModels: Record<"image" | "video" | "audio" | "text", string>;
     agentLlm: ServerAgentLlmConfig;
+    billing?: Pick<ServerSettings, "pricing" | "modelPricing" | "videoPricingUnit" | "modelVideoPricingUnits">;
 };
 export type AdminAiChannel = {
     id: string;
@@ -143,6 +177,8 @@ export type AdminAiChannel = {
     models: ServerChannelModel[];
     hasKey: boolean;
     apiKeyMasked: string;
+    archived?: boolean;
+    pendingTasks?: number;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -159,6 +195,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const backend = {
+    billingLedger: (filters: Record<string, string>, ownAccount = false) => request<{ total: number; items: BillingReceipt[] }>(`${ownAccount ? "/api/billing/ledger" : "/api/admin/billing-ledger"}?${new URLSearchParams(filters)}`),
+    billingEvents: (receiptId: string, ownAccount = false) => request<{ events: BillingEvent[] }>(`${ownAccount ? "/api/billing/ledger" : "/api/admin/billing-ledger"}/${encodeURIComponent(receiptId)}/events`),
+    confirmVideoDelivery: (channelId: string, taskId: string, bytes: number) => request<{ ok: boolean; user: ServerUser }>(`/api/video-tasks/${encodeURIComponent(channelId)}/${encodeURIComponent(taskId)}/ack`, { method: "POST", body: JSON.stringify({ bytes }) }),
+    resolveBilling: (id: string, input: { action: "retry" | "release"; reason: string; confirmedUndeliverable: boolean }) => request<{ ok: boolean }>(`/api/admin/billing-ledger/${encodeURIComponent(id)}/resolve`, { method: "POST", body: JSON.stringify(input) }),
+    recoverVideoChannel: (channelId: string, receiptId: string, apiKey: string, baseUrl = "") => request<{ ok: boolean }>(`/api/admin/channels/${encodeURIComponent(channelId)}/recover`, { method: "POST", body: JSON.stringify({ receiptId, apiKey, baseUrl }) }),
+    reportVideoDeliveryError: (channelId: string, taskId: string, reason: string) => request<{ ok: boolean }>(`/api/video-tasks/${encodeURIComponent(channelId)}/${encodeURIComponent(taskId)}/delivery-error`, { method: "POST", body: JSON.stringify({ reason }) }),
     authConfig: () => request<{ registrationEnabled: boolean }>("/api/auth/config"),
     register: (input: { username: string; password: string; displayName?: string }) =>
         request<{ token?: string; user: ServerUser }>("/api/auth/register", { method: "POST", body: JSON.stringify(input) }),
@@ -223,9 +265,10 @@ export const backend = {
     adminChannels: () => request<{ channels: AdminAiChannel[] }>("/api/admin/channels"),
     adminCreateChannel: (input: { name: string; baseUrl: string; apiKey: string; apiFormat: string; models: ServerChannelModel[] }) =>
         request<{ channel: AdminAiChannel }>("/api/admin/channels", { method: "POST", body: JSON.stringify(input) }),
-    adminPatchChannel: (id: string, patch: { name?: string; baseUrl?: string; apiKey?: string; apiFormat?: string; models?: ServerChannelModel[] }) =>
+    adminPatchChannel: (id: string, patch: { name?: string; baseUrl?: string; apiKey?: string; apiFormat?: string; models?: ServerChannelModel[]; archived?: boolean }) =>
         request<{ channel: AdminAiChannel }>(`/api/admin/channels/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
     adminDeleteChannel: (id: string) => request<{ ok: boolean }>(`/api/admin/channels/${id}`, { method: "DELETE" }),
+    adminRevokeChannel: (id: string) => request<{ ok: boolean }>(`/api/admin/channels/${id}/revoke`, { method: "POST", body: "{}" }),
 
     charge: (kind: string, model?: string) => request<{ receiptId: string; user: ServerUser }>("/api/billing/charge", { method: "POST", body: JSON.stringify({ kind, model: model || "" }) }),
     refund: (receiptId: string) => request<{ user: ServerUser }>("/api/billing/refund", { method: "POST", body: JSON.stringify({ receiptId }) }),
@@ -234,7 +277,7 @@ export const backend = {
     adminCreateUser: (input: { username: string; password: string; displayName?: string; role?: "admin" | "user"; permissions?: PermissionKey[]; credits?: number }) =>
         request<{ user: ServerUser }>("/api/admin/users", { method: "POST", body: JSON.stringify(input) }),
     adminPatchUser: (id: string, patch: { permissions?: PermissionKey[]; role?: string; status?: string; addCredits?: number; password?: string }) =>
-        request<{ user: ServerUser }>(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+        request<{ user: ServerUser }>(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify({ ...patch, ...(patch.addCredits !== undefined ? { operationKey: crypto.randomUUID(), reason: "管理员调整积分" } : {}) }) }),
     adminDeleteUser: (id: string) => request<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
     adminSettings: () => request<{ settings: ServerSettings }>("/api/admin/settings"),
     adminSaveSettings: (patch: Partial<ServerSettings>) => request<{ settings: ServerSettings }>("/api/admin/settings", { method: "PUT", body: JSON.stringify(patch) }),

@@ -90,6 +90,7 @@ export default function AccountPage() {
                 </Card>
 
                 {/* 额度 */}
+                <div className="mt-4 flex justify-end"><Link to="/account/billing" className="inline-flex items-center gap-1.5 text-sm"><Coins className="size-4" />积分明细</Link></div>
                 <div className="mt-4 grid gap-4 lg:grid-cols-3">
                     <Card className="!rounded-2xl lg:col-span-2">
                         <div className="mb-3 flex items-center gap-2 text-sm font-medium text-stone-500 dark:text-stone-400">
