@@ -35,6 +35,9 @@
 
 ## 项目进度
 
+- [2026-09-12 工作日志：计费、视频交付与并发实测](WORK_LOG_2026-09-12.md)
+- [2026-09-12 画布修改记录](CHANGE_ARCHIVE_2026-09-12_CANVAS.md)
+
 - [更新日志](/docs/progress/changelog)
 - [待测试](/docs/progress/pending-test)
 - [TODO](/docs/progress/todo)
