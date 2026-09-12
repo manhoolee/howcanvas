@@ -20,6 +20,7 @@
 - [图片与视频并发配置](CONCURRENCY_SETTINGS.md)
 - [视频按秒计费系统升级方案（设计与验收依据）](VIDEO_SECONDS_BILLING_UPGRADE.md)
 - [v0.12.9 升级与回滚说明](../RELEASE_NOTES_v0.12.9.md)
+- [v0.12.12 生成积分预览与升级说明](../RELEASE_NOTES_v0.12.12.md)
 - [画布同模型多渠道调度与服务连续性升级方案（调研与设计评审稿）](MULTI_CHANNEL_ROUTING_UPGRADE.md)
 
 ## 商务合作
@@ -35,7 +36,7 @@
 
 ## 项目进度
 
-- [2026-09-12 工作日志：计费、视频交付与并发实测](WORK_LOG_2026-09-12.md)
+- [2026-09-12 工作日志：计费、视频交付、并发实测与积分预览](WORK_LOG_2026-09-12.md)
 - [2026-09-12 画布修改记录](CHANGE_ARCHIVE_2026-09-12_CANVAS.md)
 
 - [更新日志](/docs/progress/changelog)

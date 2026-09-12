@@ -1,8 +1,8 @@
-# 修改记录：计费、视频交付与十路图片并发
+# 修改记录：计费、视频交付、十路图片并发与积分预览
 
 日期：2026-09-12（北京时间）  
-范围：HowCanvas v0.12.9 至 v0.12.11  
-发布代码：`09b4cf5` → `7b02420` → `eaf662e`  
+范围：HowCanvas v0.12.9 至 v0.12.12\
+发布代码：`09b4cf5` → `7b02420` → `eaf662e` → `99370c0`\
 背景和实测数据见[当日工作日志](WORK_LOG_2026-09-12.md)。
 
 ## 已上线的模块变更
@@ -19,17 +19,20 @@
 | 视频下载时限 | `server/video-delivery.mjs`、`.env.example` | `VIDEO_DOWNLOAD_TIMEOUT_MS` 默认 600000，底层响应头和响应体等待同步延长，连接上限仍为 60 秒 |
 | 视频交付阶段 | `web/src/lib/video-task-status.ts`、`web/src/components/canvas/canvas-node.tsx`、`web/src/pages/canvas/project.tsx`、`web/src/pages/video/index.tsx`、`web/src/types/canvas.ts` | 展示生成、取回、核验、等待重试和待核实；已知大小时展示实际下载进度 |
 | 十路图片队列 | `server/index.mjs`、`server/.env.example` | 程序允许上限由 8 改为 10，启动时记录实际并发；生产从 4 调至 10，未配置环境仍默认 2 |
+| 生成窗口布局 | `web/src/components/canvas/canvas-node.tsx`、`canvas-node-prompt-panel.tsx` | 输入区由 600px 扩至 840px，左侧模型/参数/风格，右侧积分/生成，窄窗口换行 |
+| 实时积分报价 | `web/src/lib/generation-price.ts`、`web/src/components/canvas/canvas-generation-price.tsx` | 按实际请求模型与图片张数计算；按秒视频区分预计消耗、15 秒预扣及自动时长，支持零价及管理员免扣 |
+| 价格加载状态 | `web/src/stores/use-auth-store.ts` | 登录、注册与切换账号时重置报价加载状态，加载服务器价格后才展示金额 |
 | 依赖与约定 | `server/Dockerfile`、`server/package.json`、`AGENTS.md` | 视频工具与测试入口随版本更新；明确生产 SSH、源码清单和底层传输超时检查要求 |
-| 升级与设计文档 | `RELEASE_NOTES_v0.12.9.md`、`RELEASE_NOTES_v0.12.10.md`、`RELEASE_NOTES_v0.12.11.md`、`docs/` | 补齐升级、迁移、验证、回滚、并发限制、多渠道研究及每日记录 |
+| 升级与设计文档 | `RELEASE_NOTES_v0.12.9.md`、`RELEASE_NOTES_v0.12.10.md`、`RELEASE_NOTES_v0.12.11.md`、`RELEASE_NOTES_v0.12.12.md`、`docs/` | 补齐升级、迁移、验证、回滚、并发限制、多渠道研究及每日记录 |
 
-上表中的 `image-task.ts`、`video.ts` 简写文件位于 `web/src/services/api/`。与这些变更对应的后端测试包含 `credit-accounting.test.mjs`、`generation-billing.test.mjs`、`generation-billing.integration.test.mjs`、`video-delivery.test.mjs` 和 `security.test.mjs`。
+上表中的 `image-task.ts`、`video.ts` 简写文件位于 `web/src/services/api/`，`canvas-node-prompt-panel.tsx` 位于 `web/src/components/canvas/`。与这些变更对应的后端测试包含 `credit-accounting.test.mjs`、`generation-billing.test.mjs`、`generation-billing.integration.test.mjs`、`video-delivery.test.mjs` 和 `security.test.mjs`。
 
 ## 最终运行配置
 
 | 项目 | 收尾值或状态 |
 | --- | --- |
 | 后端代码版本 | v0.12.11 |
-| 前端实际产物 | v0.12.10，页面仍显示该版本属于预期 |
+| 源码版本与前端实际产物 | v0.12.12；后端继续复用 v0.12.11 运行镜像 |
 | 图片执行 | `IMAGE_TASK_CONCURRENCY=10`，全站共享；普通图片与 Seedream 共用队列 |
 | 新安装未配置图片并发 | 默认 2；允许 1 至 10 |
 | 图片上游等待 | 沿用 1200000ms；不是包含队列的总等待上限 |
@@ -61,6 +64,8 @@ v0.12.9 为旧账号建立权威积分账户，导入期初余额并处理明确
 | 客户端媒体 | 12 路同时下载 25.94MB，14.92 秒，13.91Mbps；每张哈希、字节数和图片解码通过 |
 | 真实前端 | 12 图原任务恢复、显示、缓存、项目和媒体保存、同浏览器刷新、无缓存新浏览器恢复通过；新增生成请求 0，捕获页面脚本异常 0 |
 | 持久证据 | 12 成功节点、12 份画布媒体哈希、12 条真实前端绘制回执；旧画布内容相同 |
+| v0.12.12 积分与布局 | 本地模拟价格完成模型/张数/时长、覆盖价/默认价/零价/小数、免扣和加载态检查，浅色/深色/390px 窄窗口通过；线上管理员只读确认 840px 及零积分提示 |
+| v0.12.12 发布核验 | 52 个静态文件经生产网关校验，运行期 config.js 保持一致；451 个受管源码文件与清单一致；公网入口/画布 JS/CSS 哈希及 HTTP 健康通过，后端未重启 |
 | 未覆盖 | 失败/取消/余额不足与异常退款、十个独立用户持续负载、4K 混合图和视频并发、多渠道容灾与单机故障 |
 
 结果为单轮样本，不能直接推导所有模型或高峰时段的稳定上限。本机健康接口速度不代表公网用户体验，纯下载速度也不等于完整浏览器加载速度。
@@ -74,12 +79,16 @@ v0.12.9 为旧账号建立权威积分账户，导入期初余额并处理明确
 | 中间 4 槽配置归档 | `/opt/hoosland-archive/canvas-image-concurrency-4-20260912T104440Z/` |
 | v0.12.11 备份与发布回执 | `/opt/hoosland-archive/canvas-history-v0.12.11-20260912/` |
 | 十二图测试、账务核对和原图 | `/opt/hoosland-archive/canvas-image-loadtest-20260912/` |
-| 当日文档提交、源码包及同步回执 | `/opt/hoosland-archive/canvas-docs-20260912/` |
+| v0.12.12 备份、源码、前端产物及回执 | `/opt/hoosland-archive/canvas-history-v0.12.12-20260912/` |
+| v0.12.12 后续文档同步与旧文档备份 | `/opt/hoosland-archive/canvas-docs-v0.12.12-20260912/` |
+| 当日早期文档提交、源码包及同步回执 | `/opt/hoosland-archive/canvas-docs-20260912/` |
 | 项目文档区 | `/opt/infinite-canvas/docs/` |
 
-文档同步只复制本轮已提交的文档和截图，先验证原部署清单，再验证完整归档与目标目录，保留既有运维/历史文件。最终源码提交更新部署标记和清单；运行版本仍为 v0.12.11，镜像、用户数据、环境配置和网关不因文档同步而变化。
+文档同步只复制本轮已提交的文档和截图，先验证原部署清单，再验证完整归档与目标目录，保留既有运维/历史文件。最终源码提交更新部署标记和清单；前端版本保持 v0.12.12、后端镜像保持 v0.12.11，镜像、用户数据、环境配置和网关不因文档同步而变化。
 
-v0.12.11 后端镜像为 `sha256:95ee787b77fb37c4ce098fcf078ee24d3b94ae5f5724f1b107f9c62cdfd0334e`；前端复用 v0.12.10 镜像 `sha256:02d37495f9a349877c2881895779c4fc5872dbcbfda9265453581b166c5af536`。文档补充不构建应用、不重启容器，也不重新生成图片。
+v0.12.11 后端镜像为 `sha256:95ee787b77fb37c4ce098fcf078ee24d3b94ae5f5724f1b107f9c62cdfd0334e`；前端最终为 v0.12.12 镜像 `sha256:65e8d9252f1b8016b3309c6a84565b89b3ee4e7e7bb3ba3cc2c3ddd9f76ae61c`；此前 v0.12.10 镜像保留为回滚基线。文档补充不构建应用、不重启容器，也不重新生成图片。
+
+v0.12.12 于北京时间 22:52:52 上线，只替换画布 app 容器；SQLite 在线备份完整，环境和网关不变。正式前端构建使用锁定依赖，`npm ci --legacy-peer-deps` 处理现有 Ant Design peer 声明差异，未修改锁文件。普通账号的线上动态价格及真实生成/停止仍需验收，本轮未新增收费任务。详见 [v0.12.12 升级说明](../RELEASE_NOTES_v0.12.12.md)。
 
 ## 回滚与后续
 
