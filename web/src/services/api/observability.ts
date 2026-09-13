@@ -51,7 +51,7 @@ export type Report = {
     errors: Group[];
     series: (Summary & { at: string })[];
     attempts: { total: number; succeeded: number; failed: number; query: number; retrieval: number; inputTokens: number; outputTokens: number; measured: number };
-    coverage: { historicalFrom: string | null; telemetryFrom: string; retryMeasured: number; strictOutputMeasured: number; dataLagSeconds: number; pendingEvents: number; legacy: string; external: string };
+    coverage: { billingOnly:number; historicalFrom: string | null; telemetryFrom: string; retryMeasured: number; strictOutputMeasured: number; dataLagSeconds: number; pendingEvents: number; legacy: string; external: string };
 };
 export type Task = {
     id: string;

@@ -137,21 +137,15 @@ export function createAnalytics({ sourceFile, analysisFile, usersFile }) {
     );
     safe.lastError = r.lastError ? "交付异常（详见错误分类）" : "";
     safe.verified = Boolean(r.media?.sha256 && r.deliveredAt);
-    db.prepare(
-      "INSERT INTO receipts VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload_json=excluded.payload_json",
-    ).run(r.id, r.userId, r.createdAt, JSON.stringify(safe));
-    const image =
-      r.kind === "image" &&
-      source
-        .prepare("SELECT task_id FROM image_tasks WHERE task_id=?")
-        .get(r.taskId || "");
-    if (!image) writeFact(receiptFact(r));
-    else
-      db.prepare("DELETE FROM tasks WHERE id=? AND id!=?").run(
-        r.generationTaskId || `receipt:${r.id}`,
-        image.task_id,
-      );
+    const image = r.kind === "image" && (source.prepare("SELECT task_id FROM image_tasks WHERE user_id=? AND (task_id=? OR json_extract(payload_json,'$.receiptId')=?) LIMIT 1").get(r.userId,r.taskId || "",r.id)
+      || db.prepare("SELECT id AS task_id FROM tasks WHERE user_id=? AND kind='image' AND json_extract(payload_json,'$.receiptId')=? AND json_extract(payload_json,'$.source')!='proxy' LIMIT 1").get(r.userId,r.id));
+    safe.linkedTaskId = image?.task_id || (!r.migrated ? r.generationTaskId || `receipt:${r.id}` : "");
+    safe.billingOnly = !safe.linkedTaskId;
+    db.prepare("INSERT INTO receipts VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload_json=excluded.payload_json").run(r.id,r.userId,r.createdAt,JSON.stringify(safe));
+    if (image || r.migrated) db.prepare("DELETE FROM tasks WHERE id=? AND id!=?").run(r.generationTaskId || `receipt:${r.id}`,image?.task_id || "");
+    else writeFact(receiptFact(r));
   }
+
   function projection(entity, id) {
     if (entity === "image_tasks") {
       const task = parse(
@@ -294,7 +288,7 @@ export function createAnalytics({ sourceFile, analysisFile, usersFile }) {
     if (!force && Date.now() - lastSync < 1000) return;
     source.exec("BEGIN");
     try {
-      if (!meta("initialized")) {
+      if (meta("projectionVersion") !== METRIC_VERSION) {
         db.exec("BEGIN");
         try {
           for (const row of source
@@ -309,8 +303,9 @@ export function createAnalytics({ sourceFile, analysisFile, usersFile }) {
             .prepare("SELECT operation_key FROM credit_postings")
             .all())
             projection("credit_postings", row.operation_key);
-          setMeta("initialized", new Date().toISOString());
-          setMeta("cursor", 0);
+          if (!meta("initialized")) setMeta("initialized", new Date().toISOString());
+          if (!meta("cursor")) setMeta("cursor", 0);
+          setMeta("projectionVersion", METRIC_VERSION);
           db.exec("COMMIT");
         } catch (e) {
           db.exec("ROLLBACK");
@@ -467,6 +462,7 @@ export function createAnalytics({ sourceFile, analysisFile, usersFile }) {
         historicalFrom: db.prepare("SELECT MIN(created_at) at FROM tasks").get()
           .at,
         telemetryFrom: start,
+        billingOnly: db.prepare("SELECT COUNT(*) n FROM receipts WHERE json_extract(payload_json,'$.billingOnly')=1").get().n,
         retryMeasured: tasks.filter((t) => t.retries !== null).length,
         strictOutputMeasured: tasks.filter((t) => t.expected !== null).length,
         external: "仅包含服务器托管渠道，外部直连未纳管",

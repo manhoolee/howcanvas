@@ -1,5 +1,5 @@
 // Shared metric definitions. No prompts, provider URLs or credentials enter this projection.
-export const METRIC_VERSION = "2026-09-13.1";
+export const METRIC_VERSION = "2026-09-13.2";
 export const terminal = new Set(["succeeded", "partial", "failed"]);
 export function iso(value) {
   const n = Date.parse(value);
@@ -31,10 +31,9 @@ export function imageFact(task) {
       ? task.expectedOutputs
       : null;
   const delivered = media.length;
-  const status =
-    task.status === "succeeded" && expected && delivered < expected
-      ? "partial"
-      : task.status;
+  const status = task.status === "succeeded" && delivered === 0
+    ? "unknown"
+    : task.status === "succeeded" && expected && delivered < expected ? "partial" : task.status;
   return {
     id: task.id,
     userId: task.userId,
@@ -60,7 +59,7 @@ export function imageFact(task) {
       ? `生成异常：${errorCode(task.error, task.upstreamStatus)}`
       : "",
     errorCode: errorCode(task.error, task.upstreamStatus),
-    evidence: expected ? "complete" : "legacy-output-count",
+    evidence: task.status === "succeeded" && delivered === 0 ? "legacy-unverified" : expected ? "complete" : "legacy-output-count",
     retries: null,
     clientAckAt: iso(task.clientAckAt),
     clientRenderedAt: iso(task.clientRenderedAt),

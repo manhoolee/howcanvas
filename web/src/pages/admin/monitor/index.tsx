@@ -557,7 +557,7 @@ export default function MonitorPage() {
                 {error && <Alert type="error" showIcon title={error} description="页面保留上次数据。请重试或缩短查询区间；未知与过期数据不视为零值。" action={<Button onClick={() => void refresh()}>重试</Button>} />}
                 {report && (
                     <div className="monitor-coverage">
-                        历史任务自 {time(report.coverage.historicalFrom)}；在线、调用与负荷自 {time(report.coverage.telemetryFrom)} 开始采集。未决任务 {s ? s.running + s.queued + s.unknown : 0}；预期产出数量已知 {report.coverage.strictOutputMeasured}/
+                        历史任务自 {time(report.coverage.historicalFrom)}；在线、调用与负荷自 {time(report.coverage.telemetryFrom)} 开始采集。全站有 {report.coverage.billingOnly} 笔历史账单未关联任务，单列对账；未决任务 {s ? s.running + s.queued + s.unknown : 0}；预期产出数量已知 {report.coverage.strictOutputMeasured}/
                         {s?.total}。
                         <Tooltip title={`${report.coverage.legacy}；${report.coverage.external}`}>
                             <span>统计范围说明 ⓘ</span>

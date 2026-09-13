@@ -195,3 +195,21 @@ test("outbox replay, historical mapping, credit reconciliation and filters remai
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('historical migrated bills link by receipt ID and never invent generation tasks', () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'canvas-legacy-evidence-'));
+  const file=path.join(dir,'server.sqlite'),source=createServerDatabase(file);let analytics;
+  try {
+    const now=new Date().toISOString();
+    const user={id:'legacy-user',username:'legacy',role:'user',credits:100,createdAt:now,billingCharges:[{id:'legacy-image',kind:'image',status:'completed',model:'legacy-model',cost:2,createdAt:now},{id:'legacy-video',kind:'video',status:'completed',model:'old-video',cost:3,createdAt:now}]};
+    fs.writeFileSync(path.join(dir,'users.json'),JSON.stringify([user]));source.initializeCredits(user);
+    source.saveTask({id:'legacy-task',userId:user.id,receiptId:'legacy-image',model:'legacy-model',status:'succeeded',createdAt:now,finishedAt:now,media:[]});
+    analytics=createAnalytics({sourceFile:file,analysisFile:path.join(dir,'analytics.sqlite'),usersFile:path.join(dir,'users.json')});analytics.sync(true);
+    const report=analytics.query('report',{range:'24h'});assert.equal(report.summary.total,1);assert.equal(report.summary.succeeded,0);assert.equal(report.summary.unknown,1);assert.equal(report.summary.successRate,null);assert.equal(report.coverage.billingOnly,1);
+    assert.equal(analytics.query('task',{id:'legacy-task'}).receipt.id,'legacy-image');
+    // Deletion before the worker sees a new task must preserve only safe historical fields.
+    source.saveTask({id:'brief-task',userId:user.id,status:'succeeded',model:'legacy-model',createdAt:now,finishedAt:now,expectedOutputs:1,media:[{bytes:20,sha256:'same'}],prompt:'never project'});
+    source.deleteUserData(user.id);analytics.sync(true);
+    const deleted=analytics.query('task',{id:'brief-task'}).task;assert.equal(deleted.delivered,1);assert.equal(deleted.status,'succeeded');assert.ok(!JSON.stringify(deleted).includes('never project'));
+  } finally {analytics?.close();source.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
