@@ -18,7 +18,8 @@
 
 - [后台监控行动方案](ADMIN_MONITOR_PLAN.md)
 - [画布运行中心与统计口径](ADMIN_MONITOR.md)
-- [v0.12.15 监控上线验收](ADMIN_MONITOR_ACCEPTANCE.md)
+- [后台监控上线验收与v0.12.16会话修订](ADMIN_MONITOR_ACCEPTANCE.md)
+- [v0.12.16升级说明](../RELEASE_NOTES_v0.12.16.md)
 
 - [本地开发](/docs/development/local-development)
 - [画布数据结构](/docs/development/canvas-data-structure)

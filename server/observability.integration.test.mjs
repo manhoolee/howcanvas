@@ -269,4 +269,14 @@ test("monitoring authorization, source-backed generation, filters, controls and 
     (await req("/api/admin/observability/snapshot", admin)).data.imageLimit,
     3,
   );
+  const secondary = await req("/api/admin/users",admin,{username:"admin-two",password:"test-long-password",role:"admin"});
+  assert.equal(secondary.status,200);
+  const secondaryCookie = await login("admin-two");
+  const stream = await fetch(base+"/api/admin/observability/stream",{headers:{Cookie:secondaryCookie}});
+  assert.equal(stream.status,200);const reader=stream.body.getReader();let frame="";
+  while(!frame.includes("\n\n")){const chunk=await reader.read();assert.equal(chunk.done,false);frame+=new TextDecoder().decode(chunk.value);}
+  const reset=await fetch(base+"/api/admin/users/"+secondary.data.user.id,{method:"PATCH",headers:{Cookie:admin,"Content-Type":"application/json"},body:JSON.stringify({password:"new-test-password"})});
+  assert.equal(reset.status,200);
+  let timeout;try{const closed=await Promise.race([reader.read(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error("revoked stream remained open")),7000);})]);assert.equal(closed.done,true);}finally{clearTimeout(timeout);await reader.cancel();}
+
 });

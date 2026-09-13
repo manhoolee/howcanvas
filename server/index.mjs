@@ -656,6 +656,7 @@ function auth(req, res, next) {
     req.user = user;
     req.sessionId = payload.sid;
     req.sessionVersion = Number(payload.sver || 0);
+    req.authExpiresAt = payload.exp;
     next();
 }
 

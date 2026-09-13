@@ -135,6 +135,7 @@ export function createObservability({
         now - p.seenAt > 90000 ||
         !u ||
         u.status === "disabled" ||
+        Number(u.tokenVersion || 0) !== p.tokenVersion ||
         database.getSession(p.userId)?.active_session_id !== p.sessionId
       )
         presence.delete(key);
@@ -533,6 +534,7 @@ export function createObservability({
       presence.set(key, {
         userId: req.user.id,
         sessionId: req.sessionId,
+        tokenVersion: Number(req.user.tokenVersion || 0),
         page,
         seenAt: now,
         activeAt,
@@ -583,15 +585,17 @@ export function createObservability({
         "X-Accel-Buffering": "no",
       });
       res.flushHeaders();
+      const tokenVersion = Number(req.user.tokenVersion || 0);
       const send = () => {
-        if (
+        const current = users().find(u => u.id === req.user.id);
+        if (!current || Number(current.tokenVersion || 0) !== tokenVersion || Date.now() >= req.authExpiresAt ||
           !database.validateSession(
             req.user.id,
             req.sessionId,
             req.sessionVersion,
           ) ||
-          req.user.status === "disabled" ||
-          req.user.role !== "admin"
+          current.status === "disabled" ||
+          current.role !== "admin"
         ) {
           res.end();
           return;
