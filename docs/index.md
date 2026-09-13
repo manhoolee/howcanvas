@@ -16,6 +16,10 @@
 
 ## 开发与数据
 
+- [后台监控行动方案](ADMIN_MONITOR_PLAN.md)
+- [画布运行中心与统计口径](ADMIN_MONITOR.md)
+- [v0.12.15 监控上线验收](ADMIN_MONITOR_ACCEPTANCE.md)
+
 - [本地开发](/docs/development/local-development)
 - [画布数据结构](/docs/development/canvas-data-structure)
 - [生成计费与台账](GENERATION_BILLING.md)
