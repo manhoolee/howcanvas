@@ -1,5 +1,5 @@
 # Reuse the verified production runtime when dependency lock is unchanged.
-ARG BASE_IMAGE
+ARG BASE_IMAGE=infinite-canvas-backend:latest
 FROM ${BASE_IMAGE}
 WORKDIR /app
 COPY server/*.mjs ./

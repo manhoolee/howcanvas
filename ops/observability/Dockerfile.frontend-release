@@ -1,4 +1,4 @@
 # Keep prior hashed assets for tabs open during the release.
-ARG BASE_IMAGE
+ARG BASE_IMAGE=infinite-canvas-app:latest
 FROM ${BASE_IMAGE}
 COPY web/dist/ /usr/share/nginx/html/
