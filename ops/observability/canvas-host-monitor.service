@@ -1,0 +1,10 @@
+[Unit]
+Description=Canvas read-only host telemetry sampler
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/infinite-canvas/scripts/observability-host.py
+TimeoutStartSec=25
+Nice=10
+UMask=0022

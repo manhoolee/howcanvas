@@ -68,7 +68,7 @@ export function videoQueryUrl(receipt, channel) {
     return url.href;
 }
 
-export function createVideoDelivery({ database, directory, findUser, fetchProvider, readLimited, assertSafeUrl, reserveStorage, writeAtomic, maximumBytes }) {
+export function createVideoDelivery({ database, directory, findUser, fetchProvider, readLimited, assertSafeUrl, reserveStorage, writeAtomic, maximumBytes, observe }) {
     fs.mkdirSync(directory, { recursive: true });
     const owner = crypto.randomUUID();
     const running = new Map();
@@ -86,6 +86,7 @@ export function createVideoDelivery({ database, directory, findUser, fetchProvid
         database.recordBilling(current, eventType || (phaseChanged ? "delivery-phase" : undefined));
     }
     async function process(receipt) {
+        let observedAttempt;
         if (!receipt.taskId || !receipt.channelRevisionId || !receipt.submissionUrl) return;
         if (!database.videoLease(receipt.id, owner)) return;
         const heartbeat = setInterval(() => database.videoLease(receipt.id, owner), 10000);
@@ -101,13 +102,16 @@ export function createVideoDelivery({ database, directory, findUser, fetchProvid
             let metadata;
             if (!fs.existsSync(target)) {
                 if (current.delivery?.phase === "retrying") updateDelivery(current, { phase: current.upstreamState === "ready" ? "retrieving" : "generating", receivedBytes: 0, totalBytes: 0, retryAt: undefined });
+                observedAttempt = observe?.beginAttempt({ taskId: current.generationTaskId, userId: current.userId, kind: "video", model: current.model, channelId: current.channelId, purpose: "query" });
                 const response = await fetchProvider(videoQueryUrl(current, channel), channel);
                 if (!response.ok) {
+                    observedAttempt?.finish("failed", { httpStatus: response.status });
                     await response.body?.cancel();
                     delay = Math.max(delay, (Number(response.headers.get("retry-after")) || 0) * 1000);
                     throw new Error(`原任务查询失败 HTTP ${response.status}`);
                 }
                 const outcome = videoOutcome(await readLimited(response.body, 1024 * 1024));
+                observedAttempt?.finish("succeeded", { httpStatus: response.status });
                 if (outcome.taskId && outcome.taskId !== current.taskId) throw new Error("渠道返回任务ID与原任务不符");
                 if (outcome.state === "failed") {
                     database.releaseCredit(current.id, { reason: outcome.reason || "渠道确认生成失败", externalTerminal: true });
@@ -128,7 +132,9 @@ export function createVideoDelivery({ database, directory, findUser, fetchProvid
                 database.setVideoResult(current.id, resultUrl);
                 const startedAt = Date.now();
                 updateDelivery(current, { phase: "retrieving", receivedBytes: 0, totalBytes: 0, retryAt: undefined, downloadStartedAt: new Date(startedAt).toISOString(), timeoutMs: VIDEO_DOWNLOAD_TIMEOUT_MS }, "download-started");
+                observedAttempt = observe?.beginAttempt({ taskId: current.generationTaskId, userId: current.userId, kind: "video", model: current.model, channelId: current.channelId, purpose: "retrieval" });
                 const buffer = await downloadVideo(resultUrl, channel, { assertSafeUrl, maximumBytes, onProgress: (progress) => updateDelivery(current, progress) });
+                observedAttempt?.finish("succeeded", { responseBytes: buffer.length });
                 if (!buffer.length) throw new Error("渠道返回空视频");
                 updateDelivery(current, { phase: "verifying", downloadDurationMs: Date.now() - startedAt }, "download-completed");
                 const temporary = `${target}.probe.mp4`;
@@ -153,6 +159,7 @@ export function createVideoDelivery({ database, directory, findUser, fetchProvid
             const cost = current.exempt ? 0 : current.pricingUnit === "second" ? durationCost(current.unitPrice, metadata.actualDurationMs) : current.reservedCost;
             database.settleCredit(current.id, cost);
         } catch (error) {
+            observedAttempt?.finish("failed", { error: error.message });
             const current = database.getBillingReceipt(receipt.userId, receipt.id);
             if (current?.status === "pending") {
                 // Do not persist signed URLs, credentials or raw provider response bodies.
@@ -185,5 +192,5 @@ export function createVideoDelivery({ database, directory, findUser, fetchProvid
         }
     }, 5000);
     timer.unref();
-    return { run, fileFor };
+    return { run, fileFor, snapshot: () => ({ running: running.size, limit: 2 }) };
 }

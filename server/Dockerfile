@@ -12,6 +12,7 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev
 COPY server/*.mjs ./
+COPY VERSION /VERSION
 COPY server/*.py ./
 
 ENV PORT=8787

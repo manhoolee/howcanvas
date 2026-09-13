@@ -918,6 +918,7 @@ export default function AdminPage() {
                         <h1 className="text-xl font-semibold">管理后台</h1>
                     </div>
                     <div className="flex items-center gap-3">
+                        <Link to="/admin/monitor" className="text-sm font-medium underline underline-offset-4">监控与分析</Link>
                         <Link to="/admin?tab=api-map&focus=agent-llm" className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/30 px-3 py-1.5 text-sm text-violet-600 transition hover:bg-violet-500/10 dark:text-violet-300">
                             <Bot className="size-4" />
                             Agent LLM / Skill

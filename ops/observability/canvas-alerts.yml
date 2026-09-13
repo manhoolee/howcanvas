@@ -1,0 +1,24 @@
+groups:
+  - name: canvas
+    rules:
+      - alert: CanvasUnavailable
+        expr: up{job="canvas"} == 0
+        for: 45s
+        labels:
+          severity: critical
+        annotations:
+          summary: 画布后端指标无法采集
+      - alert: CanvasApiErrors
+        expr: rate(canvas_http_errors_total[10m]) / clamp_min(rate(canvas_http_requests_total[10m]), 0.001) > 0.1 and increase(canvas_http_requests_total[10m]) >= 20
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: 画布接口错误率超过10%
+      - alert: CanvasEventLoopSlow
+        expr: canvas_event_loop_p95_ms > 200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Node事件循环延迟持续较高

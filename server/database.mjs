@@ -3,6 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { createCreditAccounting } from "./credit-accounting.mjs";
 import { createChannelHistory } from "./channel-history.mjs";
+import { createObservabilityStore } from "./observability-store.mjs";
 import { DatabaseSync } from "node:sqlite";
 
 export function legacyDocumentIsNewer(legacyUpdatedAt, currentUpdatedAt) {
@@ -216,8 +217,10 @@ export function createServerDatabase(file) {
 
     const accounting = createCreditAccounting(db, transaction);
     const channelHistory = createChannelHistory(db, transaction, file);
+    const observability = createObservabilityStore(db);
     return {
         file,
+        ...observability,
         ...accounting,
         ...channelHistory,
         recordBilling(receipt, eventType) {

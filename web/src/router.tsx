@@ -3,12 +3,14 @@ import { Spin } from "antd";
 import { createBrowserRouter, Outlet } from "react-router-dom";
 
 import { AnalyticsTracker } from "@/components/layout/analytics-tracker";
+import { PresenceTracker } from "@/components/layout/presence-tracker";
 import { RequireAdmin, RequireAuth, RequirePermission } from "@/components/auth/guards";
 import UserLayout from "@/layouts/user-layout";
 
 const AccountPage = lazy(() => import("@/pages/account"));
 const AccountBillingPage = lazy(() => import("@/pages/account/billing"));
 const AdminPage = lazy(() => import("@/pages/admin"));
+const MonitorPage = lazy(() => import("@/pages/admin/monitor"));
 const AssetsPage = lazy(() => import("@/pages/assets"));
 const AuthPage = lazy(() => import("@/pages/auth"));
 const CanvasPage = lazy(() => import("@/pages/canvas"));
@@ -30,12 +32,14 @@ function LazyRouteOutlet() {
 }
 
 export const router = createBrowserRouter([
+    { path: "/admin/monitor", element: <RequireAuth><RequireAdmin><PresenceTracker /><Suspense fallback={<RouteLoader />}><MonitorPage /></Suspense></RequireAdmin></RequireAuth> },
     { path: "/login", element: <Suspense fallback={<RouteLoader />}><AuthPage /></Suspense> },
     {
         element: (
             <RequireAuth>
                 <UserLayout>
                     <AnalyticsTracker />
+                    <PresenceTracker />
                     <LazyRouteOutlet />
                 </UserLayout>
             </RequireAuth>
@@ -53,6 +57,7 @@ export const router = createBrowserRouter([
             { path: "/account", element: <AccountPage /> },
             { path: "/account/billing", element: <AccountBillingPage /> },
             { path: "/admin", element: <RequireAdmin><AdminPage /></RequireAdmin> },
+
         ],
     },
     { path: "*", element: <Suspense fallback={<RouteLoader />}><NotFound /></Suspense> },

@@ -1,0 +1,7 @@
+# Reuse the verified production runtime when dependency lock is unchanged.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+WORKDIR /app
+COPY server/*.mjs ./
+COPY server/package.json ./
+COPY VERSION /VERSION

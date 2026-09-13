@@ -18,6 +18,7 @@ import { createAiDispatcher } from "./ai-transport.mjs";
 import { isVideoCreation, reserveGenerationRequest, replayGenerationRequest, videoTaskId, videoOutcome, videoBillingQuantity } from "./generation-billing.mjs";
 import { creditUnits, durationCost } from "./credit-accounting.mjs";
 import { createVideoDelivery, videoQueryUrl } from "./video-delivery.mjs";
+import { createObservability } from "./observability.mjs";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(serverDir, ".env") });
@@ -508,8 +509,13 @@ function saveCanvas(userId, projects) {
 for (const user of users) database.initializeCredits(user);
 for (const channel of aiChannels) database.registerChannelRevision(channel);
 const app = express();
+const observability = createObservability({ database, dataDir: DATA_DIR, users: () => users, channels: () => aiChannels,
+    queue: () => imageTaskQueue.snapshot(), video: () => videoDelivery.snapshot(),
+    version: (() => { try { return fs.readFileSync(path.join(serverDir, "../VERSION"), "utf8").trim(); } catch { return process.env.APP_VERSION || "unknown"; } })(),
+});
+app.use(observability.middleware);
 const videoDelivery = createVideoDelivery({
-    database, directory: VIDEO_TASKS_DIR, findUser, readLimited: readBodyLimited,
+    database, directory: VIDEO_TASKS_DIR, findUser, readLimited: readBodyLimited, observe: observability,
     assertSafeUrl: assertSafeImageUrl, reserveStorage: reserveUserStorage, writeAtomic: writeFileAtomic, maximumBytes: MAX_AI_RESPONSE_BYTES,
     fetchProvider: (url, channel) => {
         const options = { method: "GET", headers: { Authorization: `Bearer ${channel.apiKey}`, Accept: "application/json" }, redirect: "error", dispatcher: aiDispatcher, signal: AbortSignal.timeout(AI_UPSTREAM_TIMEOUT_MS) };
@@ -756,6 +762,9 @@ function findVideoReceipt(user, channelId, taskId) {
 }
 
 function beginProxyCharge(user, capability, model, details = {}) {
+    const lifecycle = details.channelId ? database.currentChannelRevision(details.channelId) : null;
+    if (lifecycle?.archived) throw Object.assign(new Error("渠道已暂停接收新任务"), { statusCode: 409 });
+    if (lifecycle && !details.channelRevisionId) details.channelRevisionId = lifecycle.id;
     database.initializeCredits(user);
     const modelPrice = Number.isFinite(Number(settings.modelPricing[model])) ? Number(settings.modelPricing[model]) : null;
     const unitPrice = details.unitPrice ?? (modelPrice !== null ? modelPrice : Number(settings.pricing[capability]) || 0);
@@ -1004,6 +1013,7 @@ async function runImageTask(userId, taskId) {
     activeImageTasks.set(taskId, controller);
     updateImageTask(task, { status: "running", phase: "generating", startedAt: task.startedAt || new Date().toISOString(), error: "" });
 
+    let observedAttempt;
     try {
         const rawRequest = fs.readFileSync(paths.request);
         const seedreamTask = task.routeKind === "seedream" || isArkSeedreamChannel(channel, task.model);
@@ -1015,6 +1025,12 @@ async function runImageTask(userId, taskId) {
         task.upstreamProvider = prepared.provider;
         task.upstreamPath = forwardPath;
         task.upstreamResponseFormat = prepared.responseFormat || "";
+        if (seedreamTask) task.expectedOutputs = prepared.count;
+        else if (task.expectedOutputs === null && task.requestContentType?.startsWith("multipart/form-data")) {
+            const form = await new Response(rawRequest, { headers: { "Content-Type": task.requestContentType } }).formData();
+            const requested = Number(form.get("n") || form.get("num_images") || 1);
+            if (Number.isInteger(requested) && requested > 0 && requested <= 100) task.expectedOutputs = requested;
+        }
         task.upstreamRequestStartedAt = new Date().toISOString();
         saveImageTask(task, "task.routed");
         console.info(`[image-task] route ${task.id} ${channel.id} ${prepared.provider} POST ${forwardPath}`);
@@ -1025,6 +1041,7 @@ async function runImageTask(userId, taskId) {
         let contentType = "application/json";
         let resultBytes = 0;
         for (let index = 0; index < prepared.count; index += 1) {
+            observedAttempt = observability.beginAttempt({ taskId: task.id, userId, kind: "image", model: task.model, channelId: channel.id, purpose: "generation", outputIndex: index });
             const upstream = await fetch(url, {
                 method: "POST",
                 headers,
@@ -1035,8 +1052,10 @@ async function runImageTask(userId, taskId) {
             contentType = upstream.headers.get("content-type") || contentType;
             updateImageTask(task, { upstreamHeadersAt: task.upstreamHeadersAt || new Date().toISOString(), upstreamStatus: upstream.status });
             const body = upstream.body ? await readBodyLimited(upstream.body, MAX_AI_RESPONSE_BYTES, () => {
+                observedAttempt.firstByte();
                 if (!task.upstreamFirstByteAt) updateImageTask(task, { upstreamFirstByteAt: new Date().toISOString() });
             }) : Buffer.alloc(0);
+            observedAttempt.finish(upstream.ok ? "succeeded" : "failed", { httpStatus: upstream.status, responseBytes: body.length });
             task.upstreamStatus = upstream.status;
             if (!upstream.ok) {
                 const summary = body.toString("utf8").replace(/[\r\n\t]+/g, " ").slice(0, 1000);
@@ -1074,6 +1093,7 @@ async function runImageTask(userId, taskId) {
             persistUsers();
         }
     } catch (error) {
+        observedAttempt?.finish("failed", { error: error.message });
         const latest = loadImageTask(userId, taskId) || task;
         if (latest.status === "canceled") return;
         const cause = error?.cause;
@@ -1115,6 +1135,7 @@ function createQueuedImageTask(req, { channel, action, model, routeKind }) {
         status: "queued",
         phase: "queued",
         requestContentType: String(req.headers["content-type"] || "application/octet-stream"),
+        expectedOutputs: (() => { try { const b = JSON.parse(req.body.toString("utf8")); const n = Number(b.n || b.num_images || 1); return Number.isInteger(n) && n > 0 && n <= 100 ? n : null; } catch { return null; } })(),
         context: decodeTaskContext(req.headers["x-infinite-canvas-context"]),
         createdAt: now,
         updatedAt: now,
@@ -1416,6 +1437,7 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
     }
 
     let receipt;
+    let observedAttempt;
     const clientAbortController = new AbortController();
     const abortForDisconnectedClient = () => {
         if (!creatingVideo && !res.writableEnded) clientAbortController.abort(new Error("AI 客户端已断开"));
@@ -1426,7 +1448,8 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
             videoBilling: true, channelId: channel.id, channelRevisionId: channelRevision.id, providerNamespaceId: channelRevision.namespace,
             submissionUrl: url, pricingUnit, unitPrice, quantity: videoQuantity, reservedDurationMs: pricingUnit === "second" ? 15000 : undefined,
             requestedSeconds: req.videoRequestedSeconds, requestId: String(req.headers["idempotency-key"] || ""), upstreamState: "pending",
-        } : { unitPrice });
+        } : { unitPrice, channelId: channel.id, channelRevisionId: channelRevision?.id });
+        observedAttempt = observability.beginAttempt({ taskId: receipt?.generationTaskId || videoReceipt?.generationTaskId || "", userId: req.user.id, kind: modelConfig.capability, model, channelId: channel.id, purpose: !isVideo || creatingVideo ? "generation" : "query" });
         const requestOptions = {
             method: req.method,
             headers,
@@ -1439,6 +1462,7 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
             : await fetch(url, requestOptions);
         const contentType = upstream.headers.get("content-type");
         if (!upstream.ok) {
+            observedAttempt.finish("failed", { httpStatus: upstream.status });
             const body = upstream.body ? await readBodyLimited(upstream.body, Math.min(MAX_AI_RESPONSE_BYTES, 1024 * 1024)) : Buffer.alloc(0);
             // A timeout or provider 5xx cannot establish whether a video was created.
             if (!isVideo || [400, 401, 403, 422].includes(upstream.status)) rollbackProxyCharge(req.user, receipt);
@@ -1461,21 +1485,28 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
         if (!isVideo) completeProxyCharge(receipt);
         res.status(upstream.status);
         if (contentType) res.setHeader("Content-Type", contentType);
-        if (!upstream.body) return res.end();
+        if (!upstream.body) { observedAttempt.finish("succeeded", { httpStatus: upstream.status }); return res.end(); }
         const isStream = contentType?.toLowerCase().includes("text/event-stream") || String(req.headers.accept || "").toLowerCase().includes("text/event-stream");
         if (isStream) {
             // 流式转发（兼容 SSE 文本流）
             res.setHeader("X-Accel-Buffering", "no");
             let streamed = 0;
             for await (const chunk of upstream.body) {
+                observedAttempt.firstByte();
                 streamed += chunk.length;
                 if (streamed > MAX_AI_RESPONSE_BYTES) throw new Error("AI 上游流式响应超过服务器大小限制");
                 res.write(chunk);
             }
             res.end();
+            observedAttempt.finish("succeeded", { httpStatus: upstream.status, responseBytes: streamed });
+            if (!isVideo && receipt) observability.event("outcome", receipt.generationTaskId, { status: modelConfig.capability === "text" ? "succeeded" : "unknown", upstreamState: "succeeded", endedAt: new Date().toISOString(), phase: "response-complete", evidence: "response-complete", delivered: 0 });
         } else {
             // 图片/视频等非流式响应先完整读取，避免上游断流时向浏览器发送半截 200。
             const body = await readBodyLimited(upstream.body, MAX_AI_RESPONSE_BYTES);
+            let tokenUsage = {};
+            try { const usage = JSON.parse(body.toString("utf8")).usage; if (usage) tokenUsage = { inputTokens: Number(usage.prompt_tokens ?? usage.input_tokens) || 0, outputTokens: Number(usage.completion_tokens ?? usage.output_tokens) || 0, usageSource: "actual" }; } catch {}
+            observedAttempt.finish("succeeded", { httpStatus: upstream.status, responseBytes: body.length, ...tokenUsage });
+            if (!isVideo && receipt) observability.event("outcome", receipt.generationTaskId, { status: modelConfig.capability === "text" ? "succeeded" : "unknown", upstreamState: "succeeded", endedAt: new Date().toISOString(), phase: "response-complete", evidence: "response-complete", delivered: 0 });
             const activeReceipt = receipt || videoReceipt;
             if (isVideo && activeReceipt?.status === "pending") {
                 const previousState = activeReceipt.upstreamState;
@@ -1497,6 +1528,8 @@ app.use("/api/ai", auth, aiProxyRateLimitByRequest, express.raw({ type: "*/*", l
             res.end(body);
         }
     } catch (error) {
+        observedAttempt?.finish("failed", { error: error.message });
+        if (!isVideo && receipt) observability.event("outcome", receipt.generationTaskId, { status: "failed", endedAt: new Date().toISOString(), phase: "response-failed", errorCode: "stream_or_transport" });
         if (!res.headersSent && !isVideo) rollbackProxyCharge(req.user, receipt);
         if (isVideo && receipt && !receipt.refunded) {
             receipt.upstreamState = "unknown";
@@ -2813,6 +2846,25 @@ app.put("/api/admin/settings", auth, adminOnly, (req, res) => {
     persistSettings();
     res.json({ settings });
 });
+
+observability.register(app, { auth, adminOnly, rateLimit, actions: async (action, id, body, actor) => {
+    if (action === "image-limit") {
+        const value = Number(body.value); if (!Number.isInteger(value) || value < 1 || value > 10) throw new Error("图片并发应为1—10");
+        imageTaskQueue.setLimit(value); database.setObservationSetting("imageLimit", value); return { ok: true, value };
+    }
+    if (action === "pause-channel" || action === "resume-channel") {
+        if (!aiChannels.some(c => c.id === id)) throw new Error("渠道不存在");
+        database.archiveChannel(id, action === "pause-channel", actor.id); return { ok: true };
+    }
+    if (action === "kick-user") {
+        if (id === actor.id) throw new Error("不能在此退出当前管理员");
+        const session = database.getSession(id); if (session?.active_session_id) database.clearSession(id, session.active_session_id);
+        publishUserEvent(id, "session-replaced", {}); return { ok: true };
+    }
+    throw new Error("不支持的管理操作");
+} });
+const savedImageLimit = database.observationSetting("imageLimit");
+if (savedImageLimit) imageTaskQueue.setLimit(savedImageLimit);
 
 app.use((error, _req, res, next) => {
     if (error instanceof SyntaxError && "body" in error) return res.status(400).json({ error: "请求 JSON 格式无效" });

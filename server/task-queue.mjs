@@ -1,6 +1,6 @@
 export function createTaskQueue({ concurrency, worker, onError = () => {} }) {
     if (typeof worker !== "function") throw new TypeError("task queue worker must be a function");
-    const limit = Math.max(1, Math.floor(Number(concurrency) || 1));
+    let limit = Math.max(1, Math.floor(Number(concurrency) || 1));
     const queue = [];
     const knownTasks = new Set();
     let running = 0;
@@ -33,11 +33,13 @@ export function createTaskQueue({ concurrency, worker, onError = () => {} }) {
     }
 
     return {
+        snapshot() { return { running, queued: queue.length, limit, oldestWaitMs: queue.length ? Date.now() - queue[0].enqueuedAt : 0 }; },
+        setLimit(value) { limit = Math.min(10, Math.max(1, Math.floor(Number(value) || 1))); scheduleDrain(); },
         enqueue(userId, taskId) {
             const key = taskKey(userId, taskId);
             if (knownTasks.has(key)) return false;
             knownTasks.add(key);
-            queue.push({ userId, taskId, key });
+            queue.push({ userId, taskId, key, enqueuedAt: Date.now() });
             scheduleDrain();
             return true;
         },
